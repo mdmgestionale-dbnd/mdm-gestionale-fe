@@ -27,7 +27,7 @@
     "framer-motion": "^12.23.12",
     "jose": "^6.1.0",
     "lodash": "^4.17.21",
-    "next": "^15.1.7",
+    "next": "15.1.11",
     "pdf-lib": "^1.17.1",
     "react": "19.1.0",
     "react-apexcharts": "1.7.0",
