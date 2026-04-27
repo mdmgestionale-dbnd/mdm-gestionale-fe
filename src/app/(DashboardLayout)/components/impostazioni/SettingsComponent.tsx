@@ -53,6 +53,10 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [confirmStep, setConfirmStep] = useState(false);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<string | null>(null);
+  const [beforeDate, setBeforeDate] = useState('');
+  const [includeCompletedAssegnazioniBeforeDate, setIncludeCompletedAssegnazioniBeforeDate] = useState(false);
+  const [includeOldAllegati, setIncludeOldAllegati] = useState(false);
+  const [includeReadNotificheBeforeDate, setIncludeReadNotificheBeforeDate] = useState(false);
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
@@ -142,15 +146,19 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ entities: selectedEntities }),
+        body: JSON.stringify({
+          entities: selectedEntities,
+          beforeDate: beforeDate || null,
+          includeCompletedAssegnazioniBeforeDate,
+          includeOldAllegati,
+          includeReadNotificheBeforeDate,
+        }),
       });
       const text = await res.text();
       setReport(text);
 
-      // ✅ Aggiorna i dati dello spazio dopo la pulizia
       await fetchSpaceUsage();
 
-      // ✅ Rimuovi il warning di conferma
       setConfirmStep(false);
     } finally {
       setLoading(false);
@@ -174,7 +182,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
         </Typography>
         {over50 && (
           <Typography variant="caption" color="error">
-            ⚠️ Spazio superiore al 50% — consigliata la pulizia.
+            Spazio superiore al 50%: consigliata la pulizia.
           </Typography>
         )}
       </Box>
@@ -282,6 +290,10 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
             setReport(null);
             setSelectedEntities([]);
             setConfirmStep(false);
+            setBeforeDate('');
+            setIncludeCompletedAssegnazioniBeforeDate(false);
+            setIncludeOldAllegati(false);
+            setIncludeReadNotificheBeforeDate(false);
           }}
         >
           Apri gestione spazio
@@ -307,7 +319,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
                 Seleziona cosa vuoi pulire:
               </Typography>
               <FormGroup>
-                {['assegnazioni', 'commesse', 'clienti', 'utenti'].map((ent) => (
+                {['assegnazioni', 'cantieri', 'clienti', 'utenti', 'veicoli', 'allegati', 'notifiche'].map((ent) => (
                   <FormControlLabel
                     key={ent}
                     control={
@@ -325,6 +337,21 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
                   />
                 ))}
               </FormGroup>
+              <TextField
+                type="date"
+                size="small"
+                label="Data limite"
+                value={beforeDate}
+                onChange={(e) => setBeforeDate(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mt: 2 }}
+                fullWidth
+              />
+              <FormGroup sx={{ mt: 1 }}>
+                <FormControlLabel control={<Checkbox checked={includeCompletedAssegnazioniBeforeDate} onChange={(e) => setIncludeCompletedAssegnazioniBeforeDate(e.target.checked)} />} label="Includi assegnazioni concluse prima della data limite" />
+                <FormControlLabel control={<Checkbox checked={includeOldAllegati} onChange={(e) => setIncludeOldAllegati(e.target.checked)} />} label="Includi allegati vecchi prima della data limite" />
+                <FormControlLabel control={<Checkbox checked={includeReadNotificheBeforeDate} onChange={(e) => setIncludeReadNotificheBeforeDate(e.target.checked)} />} label="Includi notifiche lette prima della data limite" />
+              </FormGroup>
             </>
           )}
 
@@ -335,16 +362,25 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
               </Typography>
               <ul>
                 {selectedEntities.includes('assegnazioni') && (
-                  <li>🗑️ Assegnazioni precedenti alla data odierna e relativi allegati</li>
+                  <li>Assegnazioni eliminate logicamente o concluse se abilitate nelle opzioni</li>
                 )}
-                {selectedEntities.includes('commesse') && (
-                  <li>📄 Commesse eliminate e relative assegnazioni e PDF associati</li>
+                {selectedEntities.includes('cantieri') && (
+                  <li>Cantieri eliminati logicamente e dati collegati gia marcati come eliminati</li>
                 )}
                 {selectedEntities.includes('clienti') && (
-                  <li>👥 Clienti eliminati e relative assegnazioni</li>
+                  <li>Clienti eliminati logicamente</li>
                 )}
                 {selectedEntities.includes('utenti') && (
-                  <li>🔑 Utenze eliminate e relative assegnazioni</li>
+                  <li>Utenze eliminate logicamente</li>
+                )}
+                {selectedEntities.includes('veicoli') && (
+                  <li>Veicoli eliminati logicamente</li>
+                )}
+                {selectedEntities.includes('allegati') && (
+                  <li>Allegati eliminati logicamente o vecchi se abilitato</li>
+                )}
+                {selectedEntities.includes('notifiche') && (
+                  <li>Notifiche eliminate logicamente o lette se abilitato</li>
                 )}
               </ul>
             </Alert>
@@ -359,7 +395,6 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
 
         <DialogActions>
           {report ? (
-            // ✅ Mostra solo "Chiudi" dopo la pulizia
             <Button
               variant="contained"
               color="primary"

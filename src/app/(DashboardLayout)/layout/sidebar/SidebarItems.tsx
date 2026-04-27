@@ -92,7 +92,7 @@ const SidebarItems = () => {
         <Logo
           img="/images/logos/logo_transparent.png"
           component={Link}
-          href="/private/admin/assegnazioni"
+          href="/private/admin/calendario"
         />
         {renderMenuItems(Menuitems, pathDirect)}
       </MUI_Sidebar>

@@ -2,16 +2,16 @@
 
 import { Grid } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
-import SettingsComponent from '@/app/(DashboardLayout)/components/impostazioni/SettingsComponent';
+import VeicoliComponent from '@/app/(DashboardLayout)/components/veicoli/VeicoliComponent';
 import RoleGuard from '@/app/(DashboardLayout)/components/auth/RoleGuard';
 
-export default function ImpostazioniPage() {
+export default function VeicoliPage() {
   return (
-    <RoleGuard title="Impostazioni" roles={['ADMIN']}>
-      <PageContainer title="Impostazioni" description="Parametri applicativi e retention">
+    <RoleGuard title="Veicoli" roles={['ADMIN', 'SUPERVISORE', 'DIPENDENTE']}>
+      <PageContainer title="Gestione Veicoli" description="Anagrafica mezzi e scadenze">
         <Grid container spacing={3}>
           <Grid>
-            <SettingsComponent />
+            <VeicoliComponent />
           </Grid>
         </Grid>
       </PageContainer>

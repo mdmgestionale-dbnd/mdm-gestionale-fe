@@ -1,10 +1,13 @@
 import {
   IconLayoutDashboard,
   IconSettings,
-  IconGraph,
   IconUser,
   IconBriefcase2,
-  IconHammer
+  IconHammer,
+  IconBell,
+  IconReportAnalytics,
+  IconCar,
+  IconCalendarTime,
 } from "@tabler/icons-react";
 
 
@@ -19,9 +22,15 @@ const Menuitems = [
 
   {
     id: uniqueId(),
-    title: "Assegnazioni",
-    icon: IconLayoutDashboard,
-    href: "/private/admin/assegnazioni",
+    title: "Calendario",
+    icon: IconCalendarTime,
+    href: "/private/admin/calendario",
+  },
+  {
+    id: uniqueId(),
+    title: "Notifiche",
+    icon: IconBell,
+    href: "/private/admin/notifiche",
   },
   {
     navlabel: true,
@@ -29,19 +38,33 @@ const Menuitems = [
   },
   {
     id: uniqueId(),
-    title: "Gestione Commesse",
-    icon: IconHammer,
-    href: "/private/admin/commesse",
+    title: "Gestione Cantieri",
+    icon: IconBriefcase2,
+    href: "/private/admin/cantieri",
   },
   {
     id: uniqueId(),
-    title: "Gestione Clienti",
-    icon: IconBriefcase2,
-    href: "/private/admin/clienti",
+    title: "Gestione Inventario",
+    icon: IconHammer,
+    href: "/private/admin/inventario",
   },
   {
-    navlabel: true,
-    subheader: "AUTENTICAZIONE",
+    id: uniqueId(),
+    title: "Gestione Veicoli",
+    icon: IconCar,
+    href: "/private/admin/veicoli",
+  },
+  {
+    id: uniqueId(),
+    title: "Gestione Ferie",
+    icon: IconLayoutDashboard,
+    href: "/private/admin/ferie",
+  },
+  {
+    id: uniqueId(),
+    title: "Report Ore",
+    icon: IconReportAnalytics,
+    href: "/private/admin/report",
   },
   {
     id: uniqueId(),
@@ -55,12 +78,6 @@ const Menuitems = [
   },
   {
     id: uniqueId(),
-    title: "Genera Report",
-    icon: IconGraph,
-    href: "/private/admin/report",
-  },
-  {
-    id: uniqueId(),
     title: "Impostazioni",
     icon: IconSettings,
     href: "/private/admin/impostazioni",
@@ -69,5 +86,3 @@ const Menuitems = [
 ];
 
 export default Menuitems;
-
-

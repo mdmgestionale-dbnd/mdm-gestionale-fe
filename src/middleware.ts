@@ -50,13 +50,13 @@ export async function middleware(request: NextRequest) {
     // Routing in base al ruolo
     if (isRoot) {
       if (ruolo === 'ADMIN') {
-        return NextResponse.redirect(new URL('/private/admin/assegnazioni', request.url));
+        return NextResponse.redirect(new URL('/private/admin/calendario', request.url));
       }
       if (ruolo === 'SUPERVISORE') {
-        return NextResponse.redirect(new URL('/private/admin/assegnazioni', request.url));
+        return NextResponse.redirect(new URL('/private/admin/calendario', request.url));
       }
       if (ruolo === 'DIPENDENTE') {
-        return NextResponse.redirect(new URL('/private/admin/assegnazioni', request.url));
+        return NextResponse.redirect(new URL('/private/admin/calendario', request.url));
       }
     }
 

@@ -1,72 +1,20 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react';
-import { Grid, Box, Typography } from '@mui/material';
+import { Grid } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import UserManagement from '@/app/(DashboardLayout)/components/utenze/UserManagement';
+import RoleGuard from '@/app/(DashboardLayout)/components/auth/RoleGuard';
 
-const Utenze = () => {
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-    async function fetchUserRole() {
-      try {
-        const res = await fetch(`${backendUrl}/auth/me`, {
-          method: 'GET',
-          credentials: 'include',
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          setRole(data.role); // <-- backend manda role come stringa
-        } else if (res.status === 401) {
-          window.location.href = '/authentication/login';
-        } else {
-          console.error('Errore nel recupero del ruolo utente');
-        }
-      } catch (error) {
-        console.error('Errore fetch /auth/me', error);
-        window.location.href = '/authentication/login';
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchUserRole();
-  }, []);
-
-  if (loading) {
-    return (
-      <PageContainer title="Utenze" description="">
-        <Box>Caricamento...</Box>
-      </PageContainer>
-    );
-  }
-
-  // Se non sei admin → accesso negato
-  if (role !== 'ADMIN') {
-    return (
-      <PageContainer title="Accesso Negato" description="">
-        <Box p={2}>
-          <Typography variant="h6" color="error">
-            Non hai i permessi per visualizzare questa pagina.
-          </Typography>
-        </Box>
-      </PageContainer>
-    );
-  }
-
+export default function UtenzePage() {
   return (
-    <PageContainer title="Gestione Utenze" description="Gestione Utenze">
-      <Grid container spacing={3}>
-        <Grid>
-          <UserManagement />
+    <RoleGuard title="Utenze" roles={['ADMIN', 'SUPERVISORE']}>
+      <PageContainer title="Gestione Utenze" description="Utenti e ruoli applicativi">
+        <Grid container spacing={3}>
+          <Grid>
+            <UserManagement />
+          </Grid>
         </Grid>
-      </Grid>
-    </PageContainer>
+      </PageContainer>
+    </RoleGuard>
   );
-};
-
-export default Utenze;
+}

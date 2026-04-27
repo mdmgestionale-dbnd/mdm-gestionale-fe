@@ -26,6 +26,7 @@ import {
   FormControlLabel,
   Radio,
   Switch,
+  Stack,
 } from '@mui/material';
 import { Delete, Edit } from '@mui/icons-material';
 
@@ -196,23 +197,9 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
 const handleRestore = async (utente: Utente) => {
   if (!utente.id) return;
 
-  const payload = {
-    username: utente.username,
-    password: '',       // vuoto = la password rimane invariata
-    livello: utente.livello,
-    nome: utente.nome || '',
-    cognome: utente.cognome || '',
-    email: utente.email || '',
-    telefono: utente.telefono || '',
-    attivo: true,       // forza attivo
-    isDeleted: false,   // ripristina
-  };
-
-  await fetch(`${backendUrl}/api/utenti/${utente.id}`, {
+  await fetch(`${backendUrl}/api/utenti/${utente.id}/restore`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify(payload),
   });
 
   // Ricarica gli utenti e chiudi la modale dei deleted
@@ -247,7 +234,29 @@ const handleRestore = async (utente: Utente) => {
         </>
       )}
 
-      <TableContainer>
+      <Stack spacing={1.2} sx={{ display: { xs: 'flex', md: 'none' } }}>
+        {utenti.map((utente) => (
+          <Paper key={utente.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+            <Stack spacing={1}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography fontWeight={800}>{utente.username}</Typography>
+                {ruoloLabel(utente.livello)}
+              </Stack>
+              <Typography variant="body2" color="text.secondary">{`${utente.nome || ''} ${utente.cognome || ''}`.trim() || 'Nome non inserito'}</Typography>
+              <Typography variant="body2">{utente.email || utente.telefono || 'Contatti non inseriti'}</Typography>
+              <Chip size="small" label={utente.attivo ? 'Attivo' : 'Disattivato'} color={utente.attivo ? 'success' : 'default'} sx={{ alignSelf: 'flex-start' }} />
+              {!readOnly && (
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" startIcon={<Edit />} onClick={() => handleOpenForm(utente)}>Modifica</Button>
+                  <Button size="small" color="error" startIcon={<Delete />} onClick={() => handleDeleteClick(utente)}>Elimina</Button>
+                </Stack>
+              )}
+            </Stack>
+          </Paper>
+        ))}
+      </Stack>
+
+      <TableContainer sx={{ display: { xs: 'none', md: 'block' } }}>
         <Table>
           <TableHead>
             <TableRow>

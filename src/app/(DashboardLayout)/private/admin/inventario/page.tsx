@@ -2,16 +2,16 @@
 
 import { Grid } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
-import SettingsComponent from '@/app/(DashboardLayout)/components/impostazioni/SettingsComponent';
+import InventarioComponent from '@/app/(DashboardLayout)/components/inventario/InventarioComponent';
 import RoleGuard from '@/app/(DashboardLayout)/components/auth/RoleGuard';
 
-export default function ImpostazioniPage() {
+export default function InventarioPage() {
   return (
-    <RoleGuard title="Impostazioni" roles={['ADMIN']}>
-      <PageContainer title="Impostazioni" description="Parametri applicativi e retention">
+    <RoleGuard title="Inventario" roles={['ADMIN', 'SUPERVISORE', 'DIPENDENTE']}>
+      <PageContainer title="Gestione Inventario" description="Magazzino, articoli e movimenti">
         <Grid container spacing={3}>
           <Grid>
-            <SettingsComponent />
+            <InventarioComponent />
           </Grid>
         </Grid>
       </PageContainer>

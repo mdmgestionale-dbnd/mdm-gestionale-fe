@@ -1,12 +1,13 @@
-import React from 'react';
-import { Box, AppBar, Toolbar, styled, Stack, IconButton, Badge, Button } from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import { Box, AppBar, Toolbar, styled, Stack, IconButton, Badge } from '@mui/material';
 import PropTypes from 'prop-types';
 import Link from 'next/link';
 // components
 import Profile from './Profile';
 import { IconBellRinging, IconMenu } from '@tabler/icons-react';
 import { useWS } from '@/app/(DashboardLayout)/ws/WSContext';
-import { usePathname } from 'next/navigation';
+import { apiJson } from '@/lib/api';
+import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
 
 interface ItemType {
   toggleMobileSidebar:  (event: React.MouseEvent<HTMLElement>) => void;
@@ -33,8 +34,22 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
   }));
 
   const { wsConnesso } = useWS();
+  const [unread, setUnread] = useState(0);
 
-  const pathname = usePathname();
+  const loadUnread = async () => {
+    try {
+      const data = await apiJson<unknown[]>('/api/notifiche?soloNonLette=true');
+      setUnread(data.length);
+    } catch {
+      setUnread(0);
+    }
+  };
+
+  useEffect(() => {
+    loadUnread();
+  }, []);
+
+  useBroadcastRefresh(loadUnread);
 
   return (
     <AppBarStyled position="sticky" color="default">
@@ -55,13 +70,16 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
 
         <IconButton
           size="large"
-          aria-label="show 11 new notifications"
+          aria-label="notifiche"
           color="inherit"
           aria-controls="msgs-menu"
           aria-haspopup="true"
+          component={Link}
+          href="/private/admin/notifiche"
         >
-
-
+          <Badge badgeContent={unread} color="warning">
+            <IconBellRinging size="21" />
+          </Badge>
         </IconButton>
         <Box flexGrow={1} />
 {/* Stato WebSocket */}
