@@ -107,7 +107,7 @@ function MergePdfTool() {
     <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
       <Stack spacing={2}>
         <Typography variant="h5" fontWeight={800}>Unisci PDF</Typography>
-        <Alert severity="info">L'ordine dei file qui sotto sara l'ordine delle pagine nel PDF finale.</Alert>
+        <Alert severity="info">L&apos;ordine dei file qui sotto sara l&apos;ordine delle pagine nel PDF finale.</Alert>
         <Button component="label" variant="outlined" startIcon={<FileCopy />}>
           Seleziona PDF
           <input hidden type="file" accept="application/pdf,.pdf" multiple onChange={(e) => addFiles(e.target.files)} />

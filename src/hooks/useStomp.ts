@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import { Client, IMessage } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 
@@ -6,14 +6,16 @@ type Sub = { topic: string; onMessage: (msg: any) => void };
 
 export function useStomp(backendUrl: string, subs: Sub[]) {
   const clientRef = useRef<Client | null>(null);
+  const subscriptionsKey = useMemo(() => subs.map((sub) => sub.topic).join("|"), [subs]);
 
   useEffect(() => {
+    const activeSubs = subs;
     const sock = new SockJS(`${backendUrl}/ws`);
     const client = new Client({
       webSocketFactory: () => sock as any,
       reconnectDelay: 3000,
       onConnect: () => {
-        subs.forEach(({ topic, onMessage }) => {
+        activeSubs.forEach(({ topic, onMessage }) => {
           client.subscribe(topic, (frame: IMessage) => {
             try {
               onMessage(JSON.parse(frame.body));
@@ -32,7 +34,7 @@ export function useStomp(backendUrl: string, subs: Sub[]) {
       client.deactivate();
       clientRef.current = null;
     };
-  }, [backendUrl, JSON.stringify(subs)]);
+  }, [backendUrl, subscriptionsKey, subs]);
 
   const publish = useCallback((destination: string, body: any) => {
     if (!clientRef.current || !clientRef.current.connected) return;
