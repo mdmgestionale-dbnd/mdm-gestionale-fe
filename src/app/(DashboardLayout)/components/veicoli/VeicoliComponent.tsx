@@ -32,6 +32,7 @@ type Veicolo = {
   scadenzaRevisione?: string | null;
   scadenzaBollo?: string | null;
   isDeleted?: boolean;
+  deleted?: boolean;
 };
 
 const emptyForm: Veicolo = {
@@ -68,6 +69,10 @@ function deadlineLabel(label: string, date?: string | null) {
   return `${label}: ${days} giorni`;
 }
 
+function isDeleted(item: Veicolo) {
+  return Boolean(item.isDeleted || item.deleted);
+}
+
 export default function VeicoliComponent() {
   const [veicoli, setVeicoli] = useState<Veicolo[]>([]);
   const [deletedVeicoli, setDeletedVeicoli] = useState<Veicolo[]>([]);
@@ -87,8 +92,8 @@ export default function VeicoliComponent() {
   const load = useCallback(async () => {
     try {
       const data = await apiJson<Veicolo[]>('/api/veicolo?includeDeleted=true');
-      setVeicoli(data.filter((v) => !v.isDeleted));
-      setDeletedVeicoli(data.filter((v) => v.isDeleted));
+      setVeicoli(data.filter((v) => !isDeleted(v)));
+      setDeletedVeicoli(data.filter((v) => isDeleted(v)));
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Errore caricamento veicoli');
     }
@@ -145,7 +150,7 @@ export default function VeicoliComponent() {
   };
 
   const remove = async (item: Veicolo) => {
-    if (!item.id || !confirm(`Eliminare il veicolo ${item.targa}?`)) return;
+    if (!item.id || !confirm(`Eliminare il veicolo ${item.targa}?\n\nIl veicolo verra rimosso logicamente e i task collegati verranno eliminati logicamente. Potrai ripristinare tutto dalla sezione Veicoli eliminati finche non esegui la pulizia definitiva.`)) return;
     const res = await apiFetch(`/api/veicolo/${item.id}`, { method: 'DELETE' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore eliminazione veicolo');
     await load();

@@ -1,3 +1,10 @@
 *{
      font-family: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif !important;
 }
+
+input,
+select,
+textarea,
+.MuiInputBase-input {
+     font-size: 16px !important;
+}

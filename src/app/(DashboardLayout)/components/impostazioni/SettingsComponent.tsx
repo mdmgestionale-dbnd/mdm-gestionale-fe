@@ -21,12 +21,11 @@ import {
   DialogContent,
   DialogActions,
   LinearProgress,
-  FormGroup,
-  FormControlLabel,
-  Checkbox,
   Alert,
+  Stack,
 } from '@mui/material';
 import { Add, Remove, Save } from '@mui/icons-material';
+import { apiFetch, apiJson, safeReadText } from '@/lib/api';
 
 interface Impostazione {
   chiave: string;
@@ -58,11 +57,8 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [includeOldAllegati, setIncludeOldAllegati] = useState(false);
   const [includeReadNotificheBeforeDate, setIncludeReadNotificheBeforeDate] = useState(false);
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-
   const fetchSettings = async () => {
-    const res = await fetch(`${backendUrl}/api/impostazioni`, { credentials: 'include' });
-    const data: Impostazione[] = await res.json();
+    const data = await apiJson<Impostazione[]>('/api/impostazioni');
     data.sort((a, b) => keyOrder.indexOf(a.chiave) - keyOrder.indexOf(b.chiave));
     setSettings(data);
     setEditedValues({});
@@ -73,16 +69,14 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   }, []);
 
   const fetchSpaceUsage = async () => {
-    const res = await fetch(`${backendUrl}/api/retention/space`, { credentials: 'include' });
-    const data: SpaceUsage = await res.json();
+    const data = await apiJson<SpaceUsage>('/api/retention/space');
     setUsage(data);
   };
 
   const updateSetting = async (chiave: string, valore: string) => {
-    await fetch(`${backendUrl}/api/impostazioni/${chiave}`, {
+    await apiFetch(`/api/impostazioni/${chiave}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'text/plain' },
-      credentials: 'include',
       body: valore,
     });
     await fetchSettings();
@@ -139,13 +133,36 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     return num;
   };
 
+  const selectCleanupPreset = (preset: 'soft' | 'notifications' | 'attachments') => {
+    setConfirmStep(false);
+    setReport(null);
+    if (preset === 'soft') {
+      setSelectedEntities(['assegnazioni', 'cantieri', 'clienti', 'utenti', 'veicoli', 'allegati', 'notifiche']);
+      setBeforeDate('');
+      setIncludeCompletedAssegnazioniBeforeDate(false);
+      setIncludeOldAllegati(false);
+      setIncludeReadNotificheBeforeDate(false);
+      return;
+    }
+    if (preset === 'notifications') {
+      setSelectedEntities(['notifiche']);
+      setIncludeReadNotificheBeforeDate(true);
+      setIncludeOldAllegati(false);
+      setIncludeCompletedAssegnazioniBeforeDate(false);
+      return;
+    }
+    setSelectedEntities(['allegati']);
+    setIncludeOldAllegati(true);
+    setIncludeReadNotificheBeforeDate(false);
+    setIncludeCompletedAssegnazioniBeforeDate(false);
+  };
+
   const handleRunCleanup = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${backendUrl}/api/retention/run`, {
+      const res = await apiFetch('/api/retention/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           entities: selectedEntities,
           beforeDate: beforeDate || null,
@@ -154,7 +171,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
           includeReadNotificheBeforeDate,
         }),
       });
-      const text = await res.text();
+      const text = res.ok ? await res.text() : ((await safeReadText(res)) || 'Errore pulizia');
       setReport(text);
 
       await fetchSpaceUsage();
@@ -189,14 +206,71 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     );
   };
 
+  const renderSettingControl = (setting: Impostazione) => {
+    const edited = editedValues[setting.chiave];
+    const showSave = setting.tipo === 'string' && edited !== undefined && edited !== setting.valore;
+
+    if (setting.tipo === 'boolean') {
+      return <Switch checked={setting.valore === '1'} onChange={() => handleToggle(setting)} disabled={readOnly} />;
+    }
+
+    if (setting.tipo === 'string') {
+      return (
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+          <TextField
+            value={edited !== undefined ? edited : setting.valore}
+            size="small"
+            fullWidth
+            onChange={(e) => handleStringEdit(setting.chiave, e.target.value)}
+            inputProps={{ readOnly }}
+          />
+          {showSave && !readOnly && (
+            <Button variant="contained" size="small" color="primary" onClick={() => handleStringSave(setting)} startIcon={<Save />}>
+              Salva
+            </Button>
+          )}
+        </Stack>
+      );
+    }
+
+    return (
+      <Stack direction="row" spacing={1} alignItems="center">
+        <IconButton onClick={() => handleDecrement(setting)} disabled={readOnly}>
+          <Remove />
+        </IconButton>
+        <TextField
+          value={setting.valore}
+          size="small"
+          onChange={(e) => {
+            if (setting.tipo === 'double') handleDoubleChange(setting, e.target.value);
+          }}
+          inputProps={{ style: { width: 70, textAlign: 'center' }, readOnly: readOnly && setting.tipo !== 'double' }}
+        />
+        <IconButton onClick={() => handleIncrement(setting)} disabled={readOnly}>
+          <Add />
+        </IconButton>
+      </Stack>
+    );
+  };
+
   return (
-    <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
+    <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
       <Typography variant="h5" mb={3} fontWeight={600}>
         Impostazioni
       </Typography>
 
       {/* --- TABELLA IMPOSTAZIONI --- */}
-      <TableContainer>
+      <Stack spacing={1.2} sx={{ display: { xs: 'flex', md: 'none' } }}>
+        {settings.map((setting) => (
+          <Paper key={setting.chiave} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+            <Typography fontWeight={800}>{setting.descrizione || setting.chiave}</Typography>
+            <Typography variant="caption" color="text.secondary">{setting.chiave}</Typography>
+            <Box sx={{ mt: 1 }}>{renderSettingControl(setting)}</Box>
+          </Paper>
+        ))}
+      </Stack>
+
+      <TableContainer sx={{ display: { xs: 'none', md: 'block' } }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -205,69 +279,12 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {settings.map((setting) => {
-              const edited = editedValues[setting.chiave];
-              const showSave =
-                setting.tipo === 'string' &&
-                edited !== undefined &&
-                edited !== setting.valore;
-
-              return (
-                <TableRow key={setting.chiave}>
-                  <TableCell>{setting.descrizione}</TableCell>
-                  <TableCell>
-                    {setting.tipo === 'boolean' ? (
-                      <Switch
-                        checked={setting.valore === '1'}
-                        onChange={() => handleToggle(setting)}
-                        disabled={readOnly}
-                      />
-                    ) : setting.tipo === 'string' ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <TextField
-                          value={edited !== undefined ? edited : setting.valore}
-                          size="small"
-                          onChange={(e) => handleStringEdit(setting.chiave, e.target.value)}
-                          inputProps={{ style: { width: 250 }, readOnly }}
-                        />
-                        {showSave && !readOnly && (
-                          <Button
-                            variant="contained"
-                            size="small"
-                            color="primary"
-                            onClick={() => handleStringSave(setting)}
-                            startIcon={<Save />}
-                          >
-                            Salva
-                          </Button>
-                        )}
-                      </Box>
-                    ) : (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <IconButton onClick={() => handleDecrement(setting)} disabled={readOnly}>
-                          <Remove />
-                        </IconButton>
-                        <TextField
-                          value={setting.valore}
-                          size="small"
-                          onChange={(e) => {
-                            if (setting.tipo === 'double')
-                              handleDoubleChange(setting, e.target.value);
-                          }}
-                          inputProps={{
-                            style: { width: 70, textAlign: 'center' },
-                            readOnly: readOnly && setting.tipo !== 'double',
-                          }}
-                        />
-                        <IconButton onClick={() => handleIncrement(setting)} disabled={readOnly}>
-                          <Add />
-                        </IconButton>
-                      </Box>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {settings.map((setting) => (
+              <TableRow key={setting.chiave}>
+                <TableCell>{setting.descrizione}</TableCell>
+                <TableCell>{renderSettingControl(setting)}</TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </TableContainer>
@@ -315,28 +332,17 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
 
           {!confirmStep && !report && (
             <>
-              <Typography mt={3} mb={1}>
-                Seleziona cosa vuoi pulire:
+              <Typography mt={3} mb={1} fontWeight={700}>
+                Scegli una pulizia
               </Typography>
-              <FormGroup>
-                {['assegnazioni', 'cantieri', 'clienti', 'utenti', 'veicoli', 'allegati', 'notifiche'].map((ent) => (
-                  <FormControlLabel
-                    key={ent}
-                    control={
-                      <Checkbox
-                        checked={selectedEntities.includes(ent)}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setSelectedEntities((prev) =>
-                            checked ? [...prev, ent] : prev.filter((x) => x !== ent)
-                          );
-                        }}
-                      />
-                    }
-                    label={ent.charAt(0).toUpperCase() + ent.slice(1)}
-                  />
-                ))}
-              </FormGroup>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Ho ridotto le opzioni a tre azioni comprensibili. La conferma finale mostra sempre cosa verra eliminato definitivamente.
+              </Typography>
+              <Stack spacing={1.2}>
+                <Button variant={selectedEntities.includes('clienti') ? 'contained' : 'outlined'} onClick={() => selectCleanupPreset('soft')}>Elimina definitivamente elementi gia cestinati</Button>
+                <Button variant={includeReadNotificheBeforeDate ? 'contained' : 'outlined'} onClick={() => selectCleanupPreset('notifications')}>Pulisci notifiche lette vecchie</Button>
+                <Button variant={includeOldAllegati ? 'contained' : 'outlined'} onClick={() => selectCleanupPreset('attachments')}>Pulisci allegati vecchi gia eliminati</Button>
+              </Stack>
               <TextField
                 type="date"
                 size="small"
@@ -347,11 +353,9 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
                 sx={{ mt: 2 }}
                 fullWidth
               />
-              <FormGroup sx={{ mt: 1 }}>
-                <FormControlLabel control={<Checkbox checked={includeCompletedAssegnazioniBeforeDate} onChange={(e) => setIncludeCompletedAssegnazioniBeforeDate(e.target.checked)} />} label="Includi assegnazioni concluse prima della data limite" />
-                <FormControlLabel control={<Checkbox checked={includeOldAllegati} onChange={(e) => setIncludeOldAllegati(e.target.checked)} />} label="Includi allegati vecchi prima della data limite" />
-                <FormControlLabel control={<Checkbox checked={includeReadNotificheBeforeDate} onChange={(e) => setIncludeReadNotificheBeforeDate(e.target.checked)} />} label="Includi notifiche lette prima della data limite" />
-              </FormGroup>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                La data limite serve solo per notifiche/allegati vecchi. Gli elementi nel cestino vengono invece rimossi in modo definitivo.
+              </Alert>
             </>
           )}
 

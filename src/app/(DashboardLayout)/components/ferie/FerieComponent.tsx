@@ -162,7 +162,6 @@ export default function FerieComponent() {
           <Select value={requestForm.tipo} onChange={(e) => setRequestForm((p) => ({ ...p, tipo: e.target.value }))} fullWidth size="small">
             <MenuItem value="FERIE">Ferie</MenuItem>
             <MenuItem value="MALATTIA">Malattia</MenuItem>
-            <MenuItem value="PERMESSO">Permesso</MenuItem>
           </Select>
           <TextField type="date" label="Dal" value={requestForm.startDate} onChange={(e) => setRequestForm((p) => ({ ...p, startDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />
           <TextField type="date" label="Al" value={requestForm.endDate} onChange={(e) => setRequestForm((p) => ({ ...p, endDate: e.target.value }))} InputLabelProps={{ shrink: true }} fullWidth />

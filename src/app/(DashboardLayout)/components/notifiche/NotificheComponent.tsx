@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, AlertColor, Button, Chip, Paper, Stack, Typography } from '@mui/material';
-import { Delete, DoneAll } from '@mui/icons-material';
+import { Delete } from '@mui/icons-material';
 import { apiFetch, apiJson, safeReadText } from '@/lib/api';
 import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -14,6 +14,7 @@ type Notifica = {
   messaggio?: string;
   livello?: string;
   letta?: boolean;
+  destinatarioId?: number | null;
   dataScadenza?: string;
   createdAt?: string;
 };
@@ -30,13 +31,13 @@ function isDeadline(n: Notifica) {
 
 export default function NotificheComponent() {
   const { user } = useCurrentUser();
-  const canAdmin = ['ADMIN', 'SUPERVISORE'].includes((user?.role || '').toUpperCase());
+  const role = (user?.role || '').toUpperCase();
+  const canAdmin = ['ADMIN', 'SUPERVISORE'].includes(role);
   const [items, setItems] = useState<Notifica[]>([]);
-  const [mode, setMode] = useState<'rilevanti' | 'tutte'>('rilevanti');
 
   const load = useCallback(async () => {
-    setItems(await apiJson<Notifica[]>(`/api/notifiche?soloNonLette=${mode === 'rilevanti'}`));
-  }, [mode]);
+    setItems(await apiJson<Notifica[]>('/api/notifiche?soloNonLette=true'));
+  }, []);
 
   useEffect(() => {
     load();
@@ -57,6 +58,7 @@ export default function NotificheComponent() {
   };
 
   const markAll = async () => {
+    if (role === 'ADMIN' && !confirm('Eliminare tutte le notifiche operative?\n\nLe scadenze dei veicoli resteranno visibili finche non aggiorni la relativa scadenza.')) return;
     const res = await apiFetch('/api/notifiche/read-all', { method: 'PUT' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore aggiornamento notifiche');
     await load();
@@ -83,9 +85,7 @@ export default function NotificheComponent() {
           </Stack>
         </Stack>
         <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap', gap: 1 }}>
-          <Button variant={mode === 'rilevanti' ? 'contained' : 'outlined'} onClick={() => setMode('rilevanti')}>Rilevanti</Button>
-          <Button variant={mode === 'tutte' ? 'contained' : 'outlined'} onClick={() => setMode('tutte')}>Storico</Button>
-          <Button startIcon={<DoneAll />} onClick={markAll}>Segna operative come lette</Button>
+          {role === 'ADMIN' && <Button startIcon={<Delete />} onClick={markAll}>Elimina tutto</Button>}
         </Stack>
       </Paper>
 
@@ -97,8 +97,8 @@ export default function NotificheComponent() {
             sx={{ borderRadius: 2, alignItems: 'flex-start' }}
             action={
               <Stack direction="row" spacing={1}>
-                {!n.letta && !isDeadline(n) && <Button size="small" onClick={() => markRead(n.id)}>Letta</Button>}
-                {canAdmin && <Button size="small" color="inherit" startIcon={<Delete />} onClick={() => remove(n.id)}>Elimina</Button>}
+                {!n.letta && !isDeadline(n) && (!n.destinatarioId || n.destinatarioId === user?.id) && <Button size="small" onClick={() => markRead(n.id)}>Rimuovi</Button>}
+                {canAdmin && !isDeadline(n) && !n.destinatarioId && <Button size="small" color="inherit" startIcon={<Delete />} onClick={() => remove(n.id)}>Elimina</Button>}
               </Stack>
             }
           >
@@ -106,7 +106,7 @@ export default function NotificheComponent() {
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                 <Typography fontWeight={700}>{n.titolo || n.tipo || 'Notifica'}</Typography>
                 {isDeadline(n) && <Chip size="small" label="Scadenza attiva" />}
-                {!n.letta && !isDeadline(n) && <Chip size="small" label="Da leggere" color="primary" />}
+                {!n.letta && <Chip size="small" label="Da leggere" color="primary" />}
               </Stack>
               <Typography>{n.messaggio || '-'}</Typography>
               {n.createdAt && <Typography variant="caption" color="text.secondary">{new Date(n.createdAt).toLocaleString('it-IT')}</Typography>}

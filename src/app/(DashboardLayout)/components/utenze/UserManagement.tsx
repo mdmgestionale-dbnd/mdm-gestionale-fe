@@ -29,6 +29,7 @@ import {
   Stack,
 } from '@mui/material';
 import { Delete, Edit } from '@mui/icons-material';
+import { apiFetch, apiJson } from '@/lib/api';
 
 interface Utente {
   id: number;
@@ -76,11 +77,8 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
     attivo: true,
   });
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-
   const fetchUtenti = async () => {
-    const res = await fetch(`${backendUrl}/api/utenti`, { credentials: 'include' });
-    const data: Utente[] = await res.json();
+    const data = await apiJson<Utente[]>('/api/utenti');
 
     // Filtra utenti attivi tranne superadmin
     const active = data.filter(u => !u.isDeleted && u.username !== 'superadmin');
@@ -158,14 +156,10 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const handleSubmit = async () => {
     const method = editingUser ? 'PUT' : 'POST';
-    const url = editingUser
-      ? `${backendUrl}/api/utenti/${editingUser.id}`
-      : `${backendUrl}/api/utenti`;
 
-    await fetch(url, {
+    await apiFetch(editingUser ? `/api/utenti/${editingUser.id}` : '/api/utenti', {
       method,
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify({ ...formData, livello: parseInt(`${formData.livello}`, 10) }),
     });
 
@@ -180,9 +174,8 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
-    await fetch(`${backendUrl}/api/utenti/${userToDelete.id}`, {
+    await apiFetch(`/api/utenti/${userToDelete.id}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
     setConfirmDeleteOpen(false);
     setUserToDelete(null);
@@ -197,9 +190,8 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
 const handleRestore = async (utente: Utente) => {
   if (!utente.id) return;
 
-  await fetch(`${backendUrl}/api/utenti/${utente.id}/restore`, {
+  await apiFetch(`/api/utenti/${utente.id}/restore`, {
     method: 'PUT',
-    credentials: 'include',
   });
 
   // Ricarica gli utenti e chiudi la modale dei deleted
@@ -234,7 +226,7 @@ const handleRestore = async (utente: Utente) => {
         </>
       )}
 
-      <Stack spacing={1.2} sx={{ display: { xs: 'flex', md: 'none' } }}>
+      <Stack spacing={1.2}>
         {utenti.map((utente) => (
           <Paper key={utente.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
             <Stack spacing={1}>
@@ -256,7 +248,7 @@ const handleRestore = async (utente: Utente) => {
         ))}
       </Stack>
 
-      <TableContainer sx={{ display: { xs: 'none', md: 'block' } }}>
+      <TableContainer sx={{ display: 'none' }}>
         <Table>
           <TableHead>
             <TableRow>

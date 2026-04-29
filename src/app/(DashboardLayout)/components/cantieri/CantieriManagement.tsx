@@ -20,11 +20,15 @@ import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import CantiereAllegati from '@/app/(DashboardLayout)/components/allegati/CantiereAllegati';
 
-type Cliente = { id?: number; nome: string; telefono?: string; isDeleted?: boolean };
-type Cantiere = { id: number; nome: string; cliente?: { id: number; nome: string }; isDeleted?: boolean };
+type Cliente = { id?: number; nome: string; telefono?: string; isDeleted?: boolean; deleted?: boolean };
+type Cantiere = { id: number; nome: string; cliente?: { id: number; nome: string }; isDeleted?: boolean; deleted?: boolean };
 
 const emptyCliente: Cliente = { nome: '', telefono: '' };
 const emptyCantiere = { nome: '' };
+
+function isDeleted(item: { isDeleted?: boolean; deleted?: boolean }) {
+  return Boolean(item.isDeleted || item.deleted);
+}
 
 export default function CantieriManagement() {
   const { user } = useCurrentUser();
@@ -51,10 +55,10 @@ export default function CantieriManagement() {
       apiJson<Cliente[]>('/api/cliente?includeDeleted=true'),
       apiJson<Cantiere[]>('/api/cantiere?includeDeleted=true'),
     ]);
-    setClienti(c.filter((x) => !x.isDeleted));
-    setCantieri(ca.filter((x) => !x.isDeleted));
-    setDeletedClienti(c.filter((x) => x.isDeleted));
-    setDeletedCantieri(ca.filter((x) => x.isDeleted));
+    setClienti(c.filter((x) => !isDeleted(x)));
+    setCantieri(ca.filter((x) => !isDeleted(x)));
+    setDeletedClienti(c.filter((x) => isDeleted(x)));
+    setDeletedCantieri(ca.filter((x) => isDeleted(x)));
   }, []);
 
   useEffect(() => {
@@ -102,7 +106,7 @@ export default function CantieriManagement() {
   };
 
   const removeCliente = async (c: Cliente) => {
-    if (!c.id || !confirm(`Eliminare cliente ${c.nome} e i relativi cantieri/task?`)) return;
+    if (!c.id || !confirm(`Eliminare cliente ${c.nome}?\n\nVerranno eliminati logicamente anche tutti i cantieri collegati e i relativi task. Potrai ripristinarli dalla sezione Elementi eliminati finche non esegui la pulizia definitiva.`)) return;
     const res = await apiFetch(`/api/cliente/${c.id}`, { method: 'DELETE' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore eliminazione cliente');
     setSelectedCliente(null);
@@ -110,7 +114,7 @@ export default function CantieriManagement() {
   };
 
   const removeCantiere = async (c: Cantiere) => {
-    if (!confirm(`Eliminare cantiere ${c.nome}?`)) return;
+    if (!confirm(`Eliminare cantiere ${c.nome}?\n\nVerranno eliminati logicamente anche i task collegati. Potrai ripristinarli dalla sezione Elementi eliminati finche non esegui la pulizia definitiva.`)) return;
     const res = await apiFetch(`/api/cantiere/${c.id}`, { method: 'DELETE' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore eliminazione cantiere');
     await loadAll();

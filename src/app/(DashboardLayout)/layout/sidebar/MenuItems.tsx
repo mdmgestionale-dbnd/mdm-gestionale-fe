@@ -5,9 +5,9 @@ import {
   IconBriefcase2,
   IconHammer,
   IconBell,
-  IconReportAnalytics,
   IconCar,
   IconCalendarTime,
+  IconTools,
 } from "@tabler/icons-react";
 
 
@@ -62,12 +62,6 @@ const Menuitems = [
   },
   {
     id: uniqueId(),
-    title: "Report Ore",
-    icon: IconReportAnalytics,
-    href: "/private/admin/report",
-  },
-  {
-    id: uniqueId(),
     title: "Gestione Utenze",
     icon: IconUser,
     href: "/private/admin/utenze",
@@ -81,6 +75,12 @@ const Menuitems = [
     title: "Impostazioni",
     icon: IconSettings,
     href: "/private/admin/impostazioni",
+  },
+  {
+    id: uniqueId(),
+    title: "Utilità",
+    icon: IconTools,
+    href: "/private/admin/utilita",
   },
 
 ];

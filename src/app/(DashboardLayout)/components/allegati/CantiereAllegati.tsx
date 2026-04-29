@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Paper, Stack, TextField, Typography } from '@mui/material';
 import { Delete, Download, UploadFile } from '@mui/icons-material';
+import imageCompression from 'browser-image-compression';
 import { apiFetch, apiJson, getBackendUrl, safeReadText } from '@/lib/api';
 import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
 
@@ -20,6 +21,10 @@ type Props = {
   uploadAssegnazioneId?: number;
   title?: string;
 };
+
+const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+const MAX_UPLOAD_MB = 2;
+const MAX_STORAGE_MB = 1;
 
 export default function CantiereAllegati({ cantiereId, canUpload = false, canDelete = false, uploadAssegnazioneId, title = 'Allegati cantiere' }: Props) {
   const [items, setItems] = useState<Allegato[]>([]);
@@ -54,10 +59,27 @@ export default function CantiereAllegati({ cantiereId, canUpload = false, canDel
 
   const upload = async (file?: File) => {
     if (!file) return;
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      alert('Formato non ammesso. Puoi caricare solo PDF, JPG, JPEG o PNG.');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      alert('File troppo grande: massimo 2MB in upload.');
+      return;
+    }
     setUploading(true);
     try {
+      let uploadFile = file;
+      if (file.type.startsWith('image/') && file.size > MAX_STORAGE_MB * 1024 * 1024) {
+        uploadFile = await imageCompression(file, {
+          maxSizeMB: MAX_STORAGE_MB,
+          maxWidthOrHeight: 1600,
+          useWebWorker: true,
+          fileType: 'image/jpeg',
+        });
+      }
       const body = new FormData();
-      body.append('file', file);
+      body.append('file', uploadFile, uploadFile.name || file.name);
       const path = uploadAssegnazioneId ? `/api/assegnazione/${uploadAssegnazioneId}/allegati` : `/api/cantiere/${cantiereId}/allegati`;
       const res = await apiFetch(path, { method: 'POST', body });
       if (!res.ok) throw new Error((await safeReadText(res)) || 'Errore upload allegato');
@@ -84,10 +106,11 @@ export default function CantiereAllegati({ cantiereId, canUpload = false, canDel
         {canUpload && (
           <Button component="label" size="small" startIcon={<UploadFile />} disabled={uploading}>
             {uploading ? 'Carico...' : 'Carica file'}
-            <input hidden type="file" onChange={(e) => upload(e.target.files?.[0])} />
+            <input hidden type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(e) => upload(e.target.files?.[0])} />
           </Button>
         )}
       </Stack>
+      <Typography variant="caption" color="text.secondary">Formati ammessi: PDF, JPG, JPEG, PNG. Upload massimo 2MB; salvataggio massimo 1MB.</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
         <TextField size="small" label="Cerca file" value={query} onChange={(e) => setQuery(e.target.value)} fullWidth />
         <TextField size="small" type="date" label="Da" value={from} onChange={(e) => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />

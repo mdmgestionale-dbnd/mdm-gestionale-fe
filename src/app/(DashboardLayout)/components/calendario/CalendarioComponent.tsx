@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  AlertColor,
   Autocomplete,
   Box,
   Button,
@@ -23,6 +22,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import { ChevronLeft, ChevronRight, Delete, Edit, ExpandLess, ExpandMore, WarningAmber } from '@mui/icons-material';
 import { apiFetch, apiJson, safeReadText } from '@/lib/api';
@@ -36,7 +36,6 @@ type Utente = { id: number; username: string; nome?: string; cognome?: string };
 type Veicolo = { id: number; targa: string; marca?: string; modello?: string };
 type Magazzino = { id?: number; nome: string };
 type Articolo = { id: number; nome: string; magazzino?: Magazzino; quantitaMagazzino?: number };
-type Notifica = { id: number; titolo?: string; messaggio?: string; tipo?: string; livello?: string; letta?: boolean; dataScadenza?: string; createdAt?: string };
 type MaterialeTask = { id: number; inventarioId: number; magazzinoId?: number; magazzinoNome?: string; articoloNome: string; quantita: number; descrizione?: string };
 
 type Assegnazione = {
@@ -131,12 +130,6 @@ function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function notificationSeverity(level?: string): AlertColor {
-  if (level === 'ERROR') return 'error';
-  if (level === 'WARN') return 'warning';
-  return 'info';
-}
-
 function layoutOverlaps(tasks: Assegnazione[]) {
   const sorted = [...tasks].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
   const result = new Map<number, { column: number; columns: number }>();
@@ -163,10 +156,10 @@ export default function CalendarioComponent() {
   const role = (user?.role || '').toUpperCase();
   const canManageTasks = role === 'ADMIN';
   const isSupervisor = role === 'SUPERVISORE';
+  const canInspectOperators = role === 'ADMIN' || role === 'SUPERVISORE';
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
-  const [notifiche, setNotifiche] = useState<Notifica[]>([]);
   const [assegnazioni, setAssegnazioni] = useState<Assegnazione[]>([]);
   const [deletedAssegnazioni, setDeletedAssegnazioni] = useState<Assegnazione[]>([]);
   const [clienti, setClienti] = useState<Cliente[]>([]);
@@ -183,19 +176,24 @@ export default function CalendarioComponent() {
   const [editing, setEditing] = useState<Assegnazione | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [showReadNotifications, setShowReadNotifications] = useState(false);
   const [quickMaterial, setQuickMaterial] = useState<Record<number, MaterialeUsato>>({});
   const [showOperatorMaterials, setShowOperatorMaterials] = useState<Record<number, boolean>>({});
   const [showOperatorAllegati, setShowOperatorAllegati] = useState<Record<number, boolean>>({});
+  const [adminView, setAdminView] = useState<'grid' | 'summary'>('grid');
+  const isMobilePortrait = useMediaQuery('(max-width:700px) and (orientation: portrait)');
 
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-  const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
+  const rangeDays = isMobilePortrait ? 3 : 7;
+  const weekDays = useMemo(() => Array.from({ length: rangeDays }, (_, i) => addDays(weekStart, i)), [rangeDays, weekStart]);
+  const visibleWeekDays = weekDays;
+  const weekEnd = useMemo(() => addDays(weekStart, rangeDays), [rangeDays, weekStart]);
 
   const load = useCallback(async () => {
     const from = toInputValue(weekStart);
     const to = toInputValue(weekEnd);
+    setDataLoading(true);
     try {
       const [a, art, mag] = await Promise.all([
         apiJson<Assegnazione[]>(`/api/assegnazione?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
@@ -207,12 +205,11 @@ export default function CalendarioComponent() {
       setMagazzini(mag);
 
       if (role === 'ADMIN') {
-        const [cl, ca, v, ov, n, users, deleted] = await Promise.all([
+        const [cl, ca, v, ov, users, deleted] = await Promise.all([
           apiJson<Cliente[]>('/api/cliente'),
           apiJson<Cantiere[]>('/api/cantiere'),
           apiJson<Veicolo[]>('/api/veicolo'),
           apiJson<DashboardOverview>('/api/dashboard/overview'),
-          apiJson<Notifica[]>(`/api/notifiche?soloNonLette=${!showReadNotifications}`),
           apiJson<Utente[]>('/api/utenti/dipendenti'),
           apiJson<Assegnazione[]>('/api/assegnazione/deleted'),
         ]);
@@ -220,7 +217,6 @@ export default function CalendarioComponent() {
         setCantieri(ca);
         setVeicoli(v);
         setOverview(ov);
-        setNotifiche(n.slice(0, 6));
         setUtenti(users);
         setDeletedAssegnazioni(deleted);
       } else if (role === 'SUPERVISORE') {
@@ -228,7 +224,6 @@ export default function CalendarioComponent() {
         setUtenti(users);
         setDeletedAssegnazioni([]);
         setOverview(null);
-        setNotifiche([]);
       } else {
         setClienti([]);
         setCantieri([]);
@@ -236,12 +231,13 @@ export default function CalendarioComponent() {
         setUtenti([]);
         setDeletedAssegnazioni([]);
         setOverview(null);
-        setNotifiche([]);
       }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Errore caricamento calendario');
+    } finally {
+      setDataLoading(false);
     }
-  }, [role, showReadNotifications, weekEnd, weekStart]);
+  }, [role, weekEnd, weekStart]);
 
   useEffect(() => {
     load();
@@ -287,18 +283,18 @@ export default function CalendarioComponent() {
   const team = (a: Assegnazione) => a.membroNomi?.length ? a.membroNomi.join(', ') : (a.membroIds || []).map((id) => utenteMap.get(id) || id).join(', ');
   const vehicleLabels = (a: Assegnazione) => a.veicoloNomi?.length ? a.veicoloNomi.join(', ') : (a.veicoloIds || []).map((id) => veicoloMap.get(id) || id).join(', ');
   const visibleAssegnazioni = useMemo(() => {
-    if (isSupervisor && selectedUtenteId) return assegnazioni.filter((a) => a.membroIds.includes(Number(selectedUtenteId)));
+    if (canInspectOperators && selectedUtenteId) return assegnazioni.filter((a) => a.membroIds.includes(Number(selectedUtenteId)));
     return assegnazioni;
-  }, [assegnazioni, isSupervisor, selectedUtenteId]);
+  }, [assegnazioni, canInspectOperators, selectedUtenteId]);
   const operatorAssignments = useMemo(() => {
     const now = Date.now();
     const candidates = visibleAssegnazioni
       .filter((a) => new Date(a.endAt).getTime() >= now)
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-    if (isSupervisor) return candidates.slice(0, 6);
+    if (canInspectOperators) return candidates.slice(0, 6);
     const current = candidates.find((a) => new Date(a.startAt).getTime() <= now && new Date(a.endAt).getTime() >= now);
     return (current ? [current] : candidates.slice(0, 1));
-  }, [isSupervisor, visibleAssegnazioni]);
+  }, [canInspectOperators, visibleAssegnazioni]);
 
   const openNewAt = (start: Date) => {
     setEditing(null);
@@ -373,7 +369,10 @@ export default function CalendarioComponent() {
   };
 
   const remove = async (a: Assegnazione) => {
-    if (!confirm(`Eliminare il task ${a.cantiereNome}?`)) return;
+    const materiali = a.materiali?.length
+      ? `\n\nMovimenti materiale collegati:\n${a.materiali.map((m) => `- ${m.articoloNome}: ${Math.abs(Number(m.quantita))}`).join('\n')}\n\nConfermando, gli scarichi collegati saranno annullati e le quantita torneranno in magazzino.`
+      : '';
+    if (!confirm(`Eliminare il task ${a.cantiereNome}?${materiali}`)) return;
     const res = await apiFetch(`/api/assegnazione/${a.id}`, { method: 'DELETE' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore eliminazione task');
     setDetail(null);
@@ -399,6 +398,7 @@ export default function CalendarioComponent() {
     const height = Math.max(40, durationMinutes / 60 * ROW_HEIGHT - 4);
     const width = `calc((100% - 12px) / ${layout.columns})`;
     const left = `calc(6px + ${layout.column} * ((100% - 12px) / ${layout.columns}))`;
+    const hideText = layout.columns >= 4 || (typeof window !== 'undefined' && window.innerWidth < 700 && layout.columns >= 3);
     return (
       <Tooltip key={task.id} title={`${team(task) || 'Squadra da definire'} | ${vehicleLabels(task) || 'Nessun veicolo'}`}>
         <Paper
@@ -423,8 +423,24 @@ export default function CalendarioComponent() {
             cursor: 'pointer',
           }}
         >
-          <Typography variant="caption" fontWeight={700} noWrap>{formatTime(task.startAt)} {task.cantiereNome}</Typography>
-          <Typography variant="caption" display="block" noWrap>{team(task) || 'Squadra da definire'}</Typography>
+          {!hideText && (
+            <>
+              <Typography
+                variant="caption"
+                fontWeight={700}
+                sx={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.15 }}
+              >
+                {formatTime(task.startAt)} {task.cantiereNome}
+              </Typography>
+              <Typography
+                variant="caption"
+                display="block"
+                sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.15 }}
+              >
+                {team(task) || 'Squadra da definire'}
+              </Typography>
+            </>
+          )}
         </Paper>
       </Tooltip>
     );
@@ -435,15 +451,18 @@ export default function CalendarioComponent() {
       <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
           <Box>
-            <Typography variant="h5" fontWeight={700}>{isSupervisor ? 'Riepilogo squadra' : 'Il mio prossimo lavoro'}</Typography>
+            <Typography variant="h5" fontWeight={700}>{canInspectOperators ? 'Riepilogo squadra' : 'Il mio prossimo lavoro'}</Typography>
             <Typography variant="body2" color="text.secondary">Task corrente o prossimi task assegnati.</Typography>
           </Box>
-          {isSupervisor && (
-            <Select size="small" value={selectedUtenteId} displayEmpty onChange={(e) => setSelectedUtenteId(e.target.value as number | '')} sx={{ minWidth: 260 }}>
-              <MenuItem value="">Tutti i dipendenti</MenuItem>
-              {utenti.map((u) => <MenuItem key={u.id} value={u.id}>{userLabel(u)}</MenuItem>)}
-            </Select>
-          )}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            {canInspectOperators && (
+              <Select size="small" value={selectedUtenteId} displayEmpty onChange={(e) => setSelectedUtenteId(e.target.value as number | '')} sx={{ minWidth: 260 }}>
+                <MenuItem value="">Tutti i dipendenti</MenuItem>
+                {utenti.map((u) => <MenuItem key={u.id} value={u.id}>{userLabel(u)}</MenuItem>)}
+              </Select>
+            )}
+            {role === 'ADMIN' && <Button variant="outlined" onClick={() => setAdminView('grid')}>Torna alla griglia</Button>}
+          </Stack>
         </Stack>
       </Paper>
       {operatorAssignments.map((a) => {
@@ -475,8 +494,10 @@ export default function CalendarioComponent() {
                   options={magazzini}
                   value={magazzini.find((m) => m.id === selectedQuickMagazzinoId) || null}
                   getOptionLabel={(option) => option.nome}
+                  loading={dataLoading}
+                  disabled={dataLoading}
                   onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] || { inventarioId: '', quantita: '' }), magazzinoId: value?.id || '', inventarioId: '' } }))}
-                  renderInput={(params) => <TextField {...params} label="Magazzino" />}
+                  renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento magazzini...' : 'Magazzino'} />}
                   sx={{ minWidth: { sm: 190 } }}
                 />
                 <Autocomplete
@@ -484,9 +505,9 @@ export default function CalendarioComponent() {
                   options={quickArticoli}
                   value={quickArticoli.find((art) => art.id === quickMaterial[a.id]?.inventarioId) || null}
                   getOptionLabel={(option) => option.nome}
-                  disabled={!selectedQuickMagazzinoId}
+                  disabled={dataLoading || !selectedQuickMagazzinoId}
                   onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] || { magazzinoId: selectedQuickMagazzinoId, quantita: '' }), inventarioId: value?.id || '' } }))}
-                  renderInput={(params) => <TextField {...params} label="Prodotto" />}
+                  renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento prodotti...' : 'Prodotto'} />}
                   sx={{ minWidth: { sm: 220 } }}
                 />
                 <TextField size="small" type="number" label="Quantita" value={quickMaterial[a.id]?.quantita ?? ''} onChange={(e) => setQuickMaterial((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] || { magazzinoId: '', inventarioId: '' }), quantita: e.target.value === '' ? '' : Number(e.target.value) } }))} />
@@ -518,7 +539,7 @@ export default function CalendarioComponent() {
     </Stack>
   );
 
-  if (role !== 'ADMIN') {
+  if (role !== 'ADMIN' || adminView === 'summary') {
     return renderOperatorSummary();
   }
 
@@ -528,44 +549,39 @@ export default function CalendarioComponent() {
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
           <Box>
             <Typography variant="h5" fontWeight={700}>Cruscotto operativo</Typography>
-            <Typography variant="body2" color="text.secondary">Settimana, notifiche e task di cantiere.</Typography>
+            <Typography variant="body2" color="text.secondary">Settimana e task di cantiere.</Typography>
           </Box>
-          <Button variant="contained" onClick={openNewNow}>Nuovo task</Button>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <Button variant="outlined" onClick={() => {
+              setSelectedUtenteId(user?.id || '');
+              setAdminView('summary');
+            }}>Le mie assegnazioni</Button>
+            <Button variant="contained" onClick={openNewNow}>Nuovo task</Button>
+          </Stack>
         </Stack>
         {overview && (
           <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap', gap: 1 }}>
             <Chip label={`Oggi ${overview.assegnazioniOggi}`} color="primary" />
             <Chip label={`Cantieri ${overview.cantieriAttivi}`} />
             <Chip label={`Veicoli ${overview.veicoliAttivi}`} />
-            <Chip label={`Notifiche ${notifiche.length}`} color={notifiche.length > 0 ? 'warning' : 'default'} />
           </Stack>
         )}
-      </Paper>
-
-      <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ sm: 'center' }}>
-          <Typography variant="h6" fontWeight={700}>Notifiche</Typography>
-          <Button size="small" onClick={() => setShowReadNotifications((v) => !v)}>
-            {showReadNotifications ? 'Mostra solo rilevanti' : 'Includi gia lette'}
-          </Button>
-        </Stack>
-        <Stack spacing={1} sx={{ mt: 2 }}>
-          {notifiche.map((n) => (
-            <Alert key={n.id} severity={notificationSeverity(n.livello)} sx={{ alignItems: 'center' }}>
-              <strong>{n.titolo || n.tipo || 'Notifica'}</strong> {n.messaggio || ''}
-            </Alert>
-          ))}
-          {notifiche.length === 0 && <Alert severity="success">Nessuna notifica da gestire.</Alert>}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }} alignItems={{ sm: 'center' }}>
+          <Typography variant="body2" color="text.secondary">Filtro griglia</Typography>
+          <Select size="small" value={selectedUtenteId} displayEmpty onChange={(e) => setSelectedUtenteId(e.target.value as number | '')} sx={{ minWidth: 260 }}>
+            <MenuItem value="">Tutti i dipendenti</MenuItem>
+            {utenti.map((u) => <MenuItem key={u.id} value={u.id}>{userLabel(u)}</MenuItem>)}
+          </Select>
         </Stack>
       </Paper>
 
       <Paper elevation={0} sx={{ p: { xs: 1.5, md: 2 }, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} mb={1.5} spacing={1}>
-          <Button startIcon={<ChevronLeft />} onClick={() => setWeekStart(addDays(weekStart, -7))}>Settimana prima</Button>
+          <Button startIcon={<ChevronLeft />} onClick={() => setWeekStart(addDays(weekStart, -rangeDays))}>{isMobilePortrait ? '3 giorni prima' : 'Settimana prima'}</Button>
           <Typography fontWeight={700} textAlign="center">
-            {weekStart.toLocaleDateString('it-IT', { day: '2-digit', month: 'long' })} - {addDays(weekStart, 6).toLocaleDateString('it-IT', { day: '2-digit', month: 'long' })}
+            {weekStart.toLocaleDateString('it-IT', { day: '2-digit', month: 'long' })} - {addDays(weekStart, rangeDays - 1).toLocaleDateString('it-IT', { day: '2-digit', month: 'long' })}
           </Typography>
-          <Button endIcon={<ChevronRight />} onClick={() => setWeekStart(addDays(weekStart, 7))}>Settimana dopo</Button>
+          <Button endIcon={<ChevronRight />} onClick={() => setWeekStart(addDays(weekStart, rangeDays))}>{isMobilePortrait ? '3 giorni dopo' : 'Settimana dopo'}</Button>
         </Stack>
 
         <Box sx={{ overflowX: 'hidden', pb: 1, width: '100%' }}>
@@ -573,14 +589,17 @@ export default function CalendarioComponent() {
             sx={{
               minWidth: '100%',
               display: 'grid',
-              gridTemplateColumns: { xs: '42px repeat(7, minmax(0, 1fr))', md: '64px repeat(7, minmax(110px, 1fr))' },
+              gridTemplateColumns: {
+                xs: `42px repeat(${visibleWeekDays.length}, minmax(0, 1fr))`,
+                md: `64px repeat(${visibleWeekDays.length}, minmax(110px, 1fr))`,
+              },
               borderTop: '1px solid',
               borderLeft: '1px solid',
               borderColor: 'divider',
             }}
           >
             <Box sx={{ p: 1, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }} />
-            {weekDays.map((day) => (
+            {visibleWeekDays.map((day) => (
               <Box key={day.toISOString()} sx={{ p: 1, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider', bgcolor: sameDay(day, new Date()) ? 'action.hover' : 'background.paper' }}>
                 <Typography variant="caption" fontWeight={700} textTransform="capitalize">{formatDay(day)}</Typography>
               </Box>
@@ -588,7 +607,7 @@ export default function CalendarioComponent() {
             <Box sx={{ display: 'grid', gridTemplateRows: `repeat(${HOURS.length}, ${ROW_HEIGHT}px)` }}>
               {HOURS.map((h) => <Box key={h} sx={{ px: 1, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}><Typography variant="caption">{pad(h)}:00</Typography></Box>)}
             </Box>
-            {weekDays.map((day) => (
+            {visibleWeekDays.map((day) => (
               <Box key={day.toISOString()} sx={{ position: 'relative', height: HOURS.length * ROW_HEIGHT, borderRight: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}>
                 {HOURS.map((h) => (
                   <Box
@@ -628,8 +647,14 @@ export default function CalendarioComponent() {
           {showDeleted && (
             <Stack spacing={1} mt={1}>
               {deletedAssegnazioni.map((a) => (
-                <Stack key={a.id} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
-                  <Typography>{a.cantiereNome} | {formatTime(a.startAt)} - {formatTime(a.endAt)}</Typography>
+                <Stack key={a.id} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ p: 1.2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                  <Box>
+                    <Typography fontWeight={700}>{a.cantiereNome}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Inizio: {new Date(a.startAt).toLocaleString('it-IT')} | Fine: {new Date(a.endAt).toLocaleString('it-IT')}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">Squadra: {team(a) || '-'}</Typography>
+                  </Box>
                   <Button size="small" variant="outlined" onClick={() => restore(a)}>Ripristina</Button>
                 </Stack>
               ))}
@@ -648,6 +673,56 @@ export default function CalendarioComponent() {
               <Typography><strong>Squadra:</strong> {team(detail) || '-'}</Typography>
               <Typography><strong>Veicoli:</strong> {vehicleLabels(detail) || '-'}</Typography>
               {detail.note && <Alert severity="info">{detail.note}</Alert>}
+              <Stack spacing={1}>
+                <Typography fontWeight={700}>Materiali usati</Typography>
+                {(detail.materiali || []).map((m) => (
+                  <Typography key={m.id} variant="body2">
+                    {m.magazzinoNome ? `${m.magazzinoNome} - ` : ''}{m.articoloNome}: {Math.abs(Number(m.quantita))}
+                  </Typography>
+                ))}
+                {(!detail.materiali || detail.materiali.length === 0) && <Typography variant="body2" color="text.secondary">Nessun materiale registrato.</Typography>}
+                {canManageTasks && (() => {
+                  const selectedQuickMagazzinoId = quickMaterial[detail.id]?.magazzinoId || '';
+                  const quickArticoli = articoli.filter((art) => selectedQuickMagazzinoId && art.magazzino?.id === selectedQuickMagazzinoId);
+                  return (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Autocomplete
+                        size="small"
+                        options={magazzini}
+                        value={magazzini.find((m) => m.id === selectedQuickMagazzinoId) || null}
+                        getOptionLabel={(option) => option.nome}
+                        loading={dataLoading}
+                        disabled={dataLoading}
+                        onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [detail.id]: { ...(prev[detail.id] || { inventarioId: '', quantita: '' }), magazzinoId: value?.id || '', inventarioId: '' } }))}
+                        renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento magazzini...' : 'Magazzino'} />}
+                      />
+                      <Autocomplete
+                        size="small"
+                        options={quickArticoli}
+                        value={quickArticoli.find((art) => art.id === quickMaterial[detail.id]?.inventarioId) || null}
+                        getOptionLabel={(option) => option.nome}
+                        disabled={dataLoading || !selectedQuickMagazzinoId}
+                        onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [detail.id]: { ...(prev[detail.id] || { magazzinoId: selectedQuickMagazzinoId, quantita: '' }), inventarioId: value?.id || '' } }))}
+                        renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento prodotti...' : 'Prodotto'} />}
+                      />
+                      <TextField size="small" type="number" label="Quantita" value={quickMaterial[detail.id]?.quantita ?? ''} onChange={(e) => setQuickMaterial((prev) => ({ ...prev, [detail.id]: { ...(prev[detail.id] || { magazzinoId: '', inventarioId: '' }), quantita: e.target.value === '' ? '' : Number(e.target.value) } }))} />
+                      <Button variant="contained" onClick={async () => {
+                        const item = quickMaterial[detail.id];
+                        if (!item?.inventarioId || !item.quantita || Number(item.quantita) <= 0) return alert('Seleziona prodotto e quantita');
+                        const res = await apiFetch(`/api/assegnazione/${detail.id}/materiali`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ inventarioId: item.inventarioId, quantita: Number(item.quantita) }),
+                        });
+                        if (!res.ok) return alert((await safeReadText(res)) || 'Errore registrazione materiale');
+                        setQuickMaterial((prev) => ({ ...prev, [detail.id]: { magazzinoId: '', inventarioId: '', quantita: '' } }));
+                        await load();
+                        setDetail(null);
+                      }}>Registra</Button>
+                    </Stack>
+                  );
+                })()}
+              </Stack>
               <Divider />
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography fontWeight={700}>Allegati cantiere</Typography>
@@ -690,16 +765,18 @@ export default function CalendarioComponent() {
                 options={clienti}
                 value={clienti.find((c) => c.id === form.clienteId) || null}
                 getOptionLabel={(option) => option.nome}
+                loading={dataLoading}
+                disabled={dataLoading}
                 onChange={(_, value) => setForm((p) => ({ ...p, clienteId: value?.id || '', cantiereId: '' }))}
-                renderInput={(params) => <TextField {...params} label="Cliente" />}
+                renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento clienti...' : 'Cliente'} />}
               />
               <Autocomplete
                 options={cantieriFiltrati}
                 value={cantieriFiltrati.find((c) => c.id === form.cantiereId) || null}
                 getOptionLabel={(option) => option.nome}
-                disabled={!form.clienteId}
+                disabled={dataLoading || !form.clienteId}
                 onChange={(_, value) => setForm((p) => ({ ...p, cantiereId: value?.id || '' }))}
-                renderInput={(params) => <TextField {...params} label={form.clienteId ? 'Cantiere' : 'Scegli prima un cliente'} />}
+                renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento cantieri...' : form.clienteId ? 'Cantiere' : 'Scegli prima un cliente'} />}
               />
             </Stack>
           )}
@@ -707,13 +784,13 @@ export default function CalendarioComponent() {
           {step === 1 && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">Gli elementi non disponibili restano visibili, ma non selezionabili.</Typography>
-              <Select multiple value={form.membroIds} onChange={(e) => setForm((p) => ({ ...p, membroIds: e.target.value as number[] }))} size="small" renderValue={(selected) => (selected as number[]).map((id) => utenteMap.get(id) || id).join(', ')}>
+              <Select multiple disabled={dataLoading} value={form.membroIds} onChange={(e) => setForm((p) => ({ ...p, membroIds: e.target.value as number[] }))} size="small" renderValue={(selected) => (selected as number[]).map((id) => utenteMap.get(id) || id).join(', ')}>
                 {utenti.map((u) => {
                   const unavailable = membriOccupati.has(u.id);
                   return <MenuItem key={u.id} value={u.id} disabled={unavailable}>{unavailable && <WarningAmber fontSize="small" color="warning" sx={{ mr: 1 }} />}{userLabel(u)}{unavailable ? ' - non disponibile' : ''}</MenuItem>;
                 })}
               </Select>
-              <Select multiple value={form.veicoloIds} onChange={(e) => setForm((p) => ({ ...p, veicoloIds: e.target.value as number[] }))} size="small" renderValue={(selected) => (selected as number[]).map((id) => veicoloMap.get(id) || id).join(', ')}>
+              <Select multiple disabled={dataLoading} value={form.veicoloIds} onChange={(e) => setForm((p) => ({ ...p, veicoloIds: e.target.value as number[] }))} size="small" renderValue={(selected) => (selected as number[]).map((id) => veicoloMap.get(id) || id).join(', ')}>
                 {veicoli.map((v) => {
                   const unavailable = veicoliOccupati.has(v.id);
                   return <MenuItem key={v.id} value={v.id} disabled={unavailable}>{unavailable && <WarningAmber fontSize="small" color="warning" sx={{ mr: 1 }} />}{veicoloMap.get(v.id)}{unavailable ? ' - non disponibile' : ''}</MenuItem>;
@@ -737,12 +814,14 @@ export default function CalendarioComponent() {
                     options={magazzini}
                     value={magazzini.find((mag) => mag.id === m.magazzinoId) || null}
                     getOptionLabel={(option) => option.nome}
+                    loading={dataLoading}
+                    disabled={dataLoading}
                     onChange={(_, value) => {
                       const next = [...form.materialiUsati];
                       next[idx] = { ...next[idx], magazzinoId: value?.id || '', inventarioId: '' };
                       setForm((p) => ({ ...p, materialiUsati: next }));
                     }}
-                    renderInput={(params) => <TextField {...params} label="Magazzino" />}
+                    renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento magazzini...' : 'Magazzino'} />}
                     sx={{ minWidth: { sm: 220 } }}
                   />
                   <Autocomplete
@@ -750,13 +829,13 @@ export default function CalendarioComponent() {
                     options={articoli.filter((a) => m.magazzinoId && a.magazzino?.id === m.magazzinoId)}
                     value={articoli.find((a) => a.id === m.inventarioId) || null}
                     getOptionLabel={(option) => option.nome}
-                    disabled={!m.magazzinoId}
+                    disabled={dataLoading || !m.magazzinoId}
                     onChange={(_, value) => {
                       const next = [...form.materialiUsati];
                       next[idx] = { ...next[idx], inventarioId: value?.id || '' };
                       setForm((p) => ({ ...p, materialiUsati: next }));
                     }}
-                    renderInput={(params) => <TextField {...params} label={m.magazzinoId ? 'Prodotto' : 'Scegli prima un magazzino'} />}
+                    renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento prodotti...' : m.magazzinoId ? 'Prodotto' : 'Scegli prima un magazzino'} />}
                     sx={{ minWidth: { sm: 240 } }}
                   />
                   <TextField type="number" size="small" label="Quantita" value={m.quantita ?? ''} onChange={(e) => {

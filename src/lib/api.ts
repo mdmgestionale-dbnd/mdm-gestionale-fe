@@ -8,10 +8,19 @@ export function getBackendUrl(): string {
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const backendUrl = getBackendUrl();
-  return fetch(`${backendUrl}${path}`, {
-    credentials: 'include',
-    ...init,
-  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('mdm-api-loading', { detail: { delta: 1 } }));
+  }
+  try {
+    return await fetch(`${backendUrl}${path}`, {
+      credentials: 'include',
+      ...init,
+    });
+  } finally {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('mdm-api-loading', { detail: { delta: -1 } }));
+    }
+  }
 }
 
 export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
