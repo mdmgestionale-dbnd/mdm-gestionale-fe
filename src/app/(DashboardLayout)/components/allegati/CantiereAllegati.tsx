@@ -23,8 +23,8 @@ type Props = {
 };
 
 const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-const MAX_UPLOAD_MB = 2;
-const MAX_STORAGE_MB = 1;
+const MAX_UPLOAD_MB = 12;
+const MAX_STORAGE_MB = 2;
 
 export default function CantiereAllegati({ cantiereId, canUpload = false, canDelete = false, uploadAssegnazioneId, title = 'Allegati cantiere' }: Props) {
   const [items, setItems] = useState<Allegato[]>([]);
@@ -64,7 +64,7 @@ export default function CantiereAllegati({ cantiereId, canUpload = false, canDel
       return;
     }
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      alert('File troppo grande: massimo 2MB in upload.');
+      alert(`File troppo grande: massimo ${MAX_UPLOAD_MB}MB in upload.`);
       return;
     }
     setUploading(true);
@@ -110,7 +110,7 @@ export default function CantiereAllegati({ cantiereId, canUpload = false, canDel
           </Button>
         )}
       </Stack>
-      <Typography variant="caption" color="text.secondary">Formati ammessi: PDF, JPG, JPEG, PNG. Upload massimo 2MB; salvataggio massimo 1MB.</Typography>
+      <Typography variant="caption" color="text.secondary">Formati ammessi: PDF, JPG, JPEG, PNG. Upload massimo {MAX_UPLOAD_MB}MB; salvataggio massimo {MAX_STORAGE_MB}MB.</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
         <TextField size="small" label="Cerca file" value={query} onChange={(e) => setQuery(e.target.value)} fullWidth />
         <TextField size="small" type="date" label="Da" value={from} onChange={(e) => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />

@@ -3,7 +3,6 @@ import {
   IconSettings,
   IconUser,
   IconBriefcase2,
-  IconHammer,
   IconBell,
   IconCar,
   IconCalendarTime,
@@ -41,12 +40,6 @@ const Menuitems = [
     title: "Gestione Cantieri",
     icon: IconBriefcase2,
     href: "/private/admin/cantieri",
-  },
-  {
-    id: uniqueId(),
-    title: "Gestione Inventario",
-    icon: IconHammer,
-    href: "/private/admin/inventario",
   },
   {
     id: uniqueId(),

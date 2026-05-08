@@ -200,36 +200,41 @@ const handleRestore = async (utente: Utente) => {
 };
 
   return (
-    <Paper elevation={3} sx={{ p: 3, borderRadius: 3 }}>
-      <Typography variant="h5" mb={3} fontWeight={600}>
-        Utenze
-      </Typography>
+    <Paper elevation={3} sx={{ p: { xs: 2, md: 3 }, borderRadius: 3 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} mb={3}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Utenze
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Gestione degli accessi e dei ruoli applicativi.
+          </Typography>
+        </Box>
 
-      {!readOnly && (
-        <>
+        {!readOnly && (
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
           <Button
             variant="contained"
             size="small"
             onClick={() => handleOpenForm()}
-            sx={{ mb: 2 }}
           >
             Aggiungi Utente
           </Button>
           <Button
             variant="outlined"
             size="small"
-            sx={{ ml: 2, mb: 2 }}
             onClick={() => setDeletedOpen(true)}
           >
             Utenze cancellate
           </Button>
-        </>
-      )}
+        </Stack>
+        )}
+      </Stack>
 
-      <Stack spacing={1.2}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 1.5 }}>
         {utenti.map((utente) => (
-          <Paper key={utente.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-            <Stack spacing={1}>
+          <Paper key={utente.id} elevation={0} sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2, minHeight: 190 }}>
+            <Stack spacing={1} height="100%">
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography fontWeight={800}>{utente.username}</Typography>
                 {ruoloLabel(utente.livello)}
@@ -238,7 +243,7 @@ const handleRestore = async (utente: Utente) => {
               <Typography variant="body2">{utente.email || utente.telefono || 'Contatti non inseriti'}</Typography>
               <Chip size="small" label={utente.attivo ? 'Attivo' : 'Disattivato'} color={utente.attivo ? 'success' : 'default'} sx={{ alignSelf: 'flex-start' }} />
               {!readOnly && (
-                <Stack direction="row" spacing={1}>
+                <Stack direction="row" spacing={1} sx={{ mt: 'auto' }}>
                   <Button size="small" startIcon={<Edit />} onClick={() => handleOpenForm(utente)}>Modifica</Button>
                   <Button size="small" color="error" startIcon={<Delete />} onClick={() => handleDeleteClick(utente)}>Elimina</Button>
                 </Stack>
@@ -246,7 +251,7 @@ const handleRestore = async (utente: Utente) => {
             </Stack>
           </Paper>
         ))}
-      </Stack>
+      </Box>
 
       <TableContainer sx={{ display: 'none' }}>
         <Table>

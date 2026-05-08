@@ -5,6 +5,7 @@ import Header from "@/app/(DashboardLayout)/layout/header/Header";
 import Sidebar from "@/app/(DashboardLayout)/layout/sidebar/Sidebar";
 import { WSProvider } from "@/app/(DashboardLayout)/ws/WSContext";
 import GlobalApiLoader from "@/app/(DashboardLayout)/components/loading/GlobalApiLoader";
+import MobileDock from "@/app/(DashboardLayout)/components/mobile/MobileDock";
 
 
 const MainWrapper = styled("div")(() => ({
@@ -16,10 +17,11 @@ const MainWrapper = styled("div")(() => ({
 const PageWrapper = styled("div")(() => ({
   display: "flex",
   flexGrow: 1,
-  paddingBottom: "60px",
+  paddingBottom: "calc(92px + env(safe-area-inset-bottom))",
   flexDirection: "column",
   zIndex: 1,
-  backgroundColor: "transparent",
+  background:
+    "radial-gradient(circle at top left, rgba(46, 125, 50, 0.22), transparent 34%), radial-gradient(circle at 88% 4%, rgba(255, 215, 0, 0.10), transparent 30%), linear-gradient(180deg, #050805 0%, #0b0b0b 52%, #121212 100%)",
 }));
 
 interface Props {
@@ -60,9 +62,11 @@ export default function RootLayout({
         {/* ------------------------------------------- */}
         <Container
           sx={{
-            paddingTop: "20px",
-            maxWidth: "1200px",
+            paddingTop: { xs: "14px", md: "20px" },
+            px: { xs: 1.5, sm: 2, md: 3 },
+            maxWidth: { xs: "100%", xl: "1320px" },
           }}
+          maxWidth={false}
         >
           {/* ------------------------------------------- */}
           {/* Page Route */}
@@ -72,6 +76,7 @@ export default function RootLayout({
           {/* End Page */}
           {/* ------------------------------------------- */}
         </Container>
+        <MobileDock />
       </PageWrapper>
     </MainWrapper>
     </WSProvider>

@@ -34,9 +34,6 @@ type Cliente = { id: number; nome: string };
 type Cantiere = { id: number; nome: string; codice?: string; cliente?: Cliente };
 type Utente = { id: number; username: string; nome?: string; cognome?: string };
 type Veicolo = { id: number; targa: string; marca?: string; modello?: string };
-type Magazzino = { id?: number; nome: string };
-type Articolo = { id: number; nome: string; magazzino?: Magazzino; quantitaMagazzino?: number };
-type MaterialeTask = { id: number; inventarioId: number; magazzinoId?: number; magazzinoNome?: string; articoloNome: string; quantita: number; descrizione?: string };
 
 type Assegnazione = {
   id: number;
@@ -45,25 +42,24 @@ type Assegnazione = {
   startAt: string;
   endAt: string;
   note?: string;
+  materialiNote?: string;
   membroIds: number[];
   membroNomi?: string[];
   veicoloIds: number[];
   veicoloNomi?: string[];
-  materiali?: MaterialeTask[];
 };
 
 type AvailabilityResponse = { disponibili: boolean; membriOccupati: number[]; veicoliOccupati: number[] };
 type DashboardOverview = { cantieriAttivi: number; veicoliAttivi: number; assegnazioniOggi: number; notificheNonLette: number };
-type MaterialeUsato = { magazzinoId: number | ''; inventarioId: number | ''; quantita: number | ''; descrizione?: string };
 type FormState = {
   clienteId: number | '';
   cantiereId: number | '';
   startAt: string;
   endAt: string;
   note: string;
+  materialiNote: string;
   membroIds: number[];
   veicoloIds: number[];
-  materialiUsati: MaterialeUsato[];
 };
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 7);
@@ -76,9 +72,9 @@ const emptyForm: FormState = {
   startAt: '',
   endAt: '',
   note: '',
+  materialiNote: '',
   membroIds: [],
   veicoloIds: [],
-  materialiUsati: [],
 };
 
 function pad(n: number) {
@@ -107,6 +103,12 @@ function startOfWeek(date: Date): Date {
   return d;
 }
 
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 function addDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -128,6 +130,10 @@ function formatDay(value: Date): string {
 
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function dateKey(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function layoutOverlaps(tasks: Assegnazione[]) {
@@ -155,7 +161,6 @@ export default function CalendarioComponent() {
   const { user } = useCurrentUser();
   const role = (user?.role || '').toUpperCase();
   const canManageTasks = role === 'ADMIN';
-  const isSupervisor = role === 'SUPERVISORE';
   const canInspectOperators = role === 'ADMIN' || role === 'SUPERVISORE';
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
@@ -166,8 +171,6 @@ export default function CalendarioComponent() {
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [utenti, setUtenti] = useState<Utente[]>([]);
   const [veicoli, setVeicoli] = useState<Veicolo[]>([]);
-  const [magazzini, setMagazzini] = useState<Magazzino[]>([]);
-  const [articoli, setArticoli] = useState<Articolo[]>([]);
   const [selectedUtenteId, setSelectedUtenteId] = useState<number | ''>('');
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -179,7 +182,7 @@ export default function CalendarioComponent() {
   const [dataLoading, setDataLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [quickMaterial, setQuickMaterial] = useState<Record<number, MaterialeUsato>>({});
+  const [materialDraft, setMaterialDraft] = useState<Record<number, string>>({});
   const [showOperatorMaterials, setShowOperatorMaterials] = useState<Record<number, boolean>>({});
   const [showOperatorAllegati, setShowOperatorAllegati] = useState<Record<number, boolean>>({});
   const [adminView, setAdminView] = useState<'grid' | 'summary'>('grid');
@@ -190,19 +193,20 @@ export default function CalendarioComponent() {
   const visibleWeekDays = weekDays;
   const weekEnd = useMemo(() => addDays(weekStart, rangeDays), [rangeDays, weekStart]);
 
+  useEffect(() => {
+    setWeekStart(isMobilePortrait ? startOfDay(new Date()) : startOfWeek(new Date()));
+  }, [isMobilePortrait]);
+
   const load = useCallback(async () => {
-    const from = toInputValue(weekStart);
-    const to = toInputValue(weekEnd);
+    const summaryRange = role !== 'ADMIN' || adminView === 'summary';
+    const rangeStart = summaryRange ? startOfDay(new Date()) : weekStart;
+    const rangeEnd = summaryRange ? addDays(rangeStart, 15) : weekEnd;
+    const from = toInputValue(rangeStart);
+    const to = toInputValue(rangeEnd);
     setDataLoading(true);
     try {
-      const [a, art, mag] = await Promise.all([
-        apiJson<Assegnazione[]>(`/api/assegnazione?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
-        apiJson<Articolo[]>('/api/inventarioarticolo'),
-        apiJson<Magazzino[]>('/api/magazzino'),
-      ]);
+      const a = await apiJson<Assegnazione[]>(`/api/assegnazione?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
       setAssegnazioni(a);
-      setArticoli(art);
-      setMagazzini(mag);
 
       if (role === 'ADMIN') {
         const [cl, ca, v, ov, users, deleted] = await Promise.all([
@@ -237,7 +241,7 @@ export default function CalendarioComponent() {
     } finally {
       setDataLoading(false);
     }
-  }, [role, weekEnd, weekStart]);
+  }, [adminView, role, weekEnd, weekStart]);
 
   useEffect(() => {
     load();
@@ -287,14 +291,17 @@ export default function CalendarioComponent() {
     return assegnazioni;
   }, [assegnazioni, canInspectOperators, selectedUtenteId]);
   const operatorAssignments = useMemo(() => {
-    const now = Date.now();
+    const nowDate = new Date();
+    const now = nowDate.getTime();
     const candidates = visibleAssegnazioni
       .filter((a) => new Date(a.endAt).getTime() >= now)
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-    if (canInspectOperators) return candidates.slice(0, 6);
-    const current = candidates.find((a) => new Date(a.startAt).getTime() <= now && new Date(a.endAt).getTime() >= now);
-    return (current ? [current] : candidates.slice(0, 1));
-  }, [canInspectOperators, visibleAssegnazioni]);
+    const todayKey = dateKey(nowDate);
+    const today = candidates.filter((a) => dateKey(new Date(a.startAt)) === todayKey);
+    if (today.length) return today;
+    const nextKey = candidates.length ? dateKey(new Date(candidates[0].startAt)) : '';
+    return candidates.filter((a) => dateKey(new Date(a.startAt)) === nextKey);
+  }, [visibleAssegnazioni]);
 
   const openNewAt = (start: Date) => {
     setEditing(null);
@@ -316,9 +323,9 @@ export default function CalendarioComponent() {
       startAt: toInputValue(new Date(a.startAt)),
       endAt: toInputValue(new Date(a.endAt)),
       note: a.note || '',
+      materialiNote: a.materialiNote || '',
       membroIds: a.membroIds || [],
       veicoloIds: a.veicoloIds || [],
-      materialiUsati: (a.materiali || []).map((m) => ({ magazzinoId: m.magazzinoId || '', inventarioId: m.inventarioId, quantita: Math.abs(Number(m.quantita)), descrizione: m.descrizione || '' })),
     });
     setOpen(true);
   };
@@ -351,11 +358,9 @@ export default function CalendarioComponent() {
           startAt: form.startAt,
           endAt: form.endAt,
           note: form.note,
+          materialiNote: form.materialiNote,
           membroIds: form.membroIds,
           veicoloIds: form.veicoloIds,
-          materialiUsati: form.materialiUsati
-            .filter((m) => m.inventarioId && Number(m.quantita) > 0)
-            .map((m) => ({ ...m, quantita: Number(m.quantita) })),
         }),
       });
       if (!res.ok) throw new Error((await safeReadText(res)) || 'Errore salvataggio task');
@@ -369,10 +374,7 @@ export default function CalendarioComponent() {
   };
 
   const remove = async (a: Assegnazione) => {
-    const materiali = a.materiali?.length
-      ? `\n\nMovimenti materiale collegati:\n${a.materiali.map((m) => `- ${m.articoloNome}: ${Math.abs(Number(m.quantita))}`).join('\n')}\n\nConfermando, gli scarichi collegati saranno annullati e le quantita torneranno in magazzino.`
-      : '';
-    if (!confirm(`Eliminare il task ${a.cantiereNome}?${materiali}`)) return;
+    if (!confirm(`Eliminare il task ${a.cantiereNome}?\n\nIl task verra spostato negli elementi eliminati e potrai ripristinarlo finche non esegui la pulizia definitiva.`)) return;
     const res = await apiFetch(`/api/assegnazione/${a.id}`, { method: 'DELETE' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore eliminazione task');
     setDetail(null);
@@ -388,6 +390,17 @@ export default function CalendarioComponent() {
   const openDetail = (a: Assegnazione) => {
     setDetail(a);
     setShowAllegati(false);
+  };
+
+  const saveMaterialiNote = async (id: number, note: string) => {
+    const res = await apiFetch(`/api/assegnazione/${id}/materiali-note`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/plain' },
+      body: note,
+    });
+    if (!res.ok) return alert((await safeReadText(res)) || 'Errore aggiornamento materiali');
+    setMaterialDraft((prev) => ({ ...prev, [id]: note }));
+    await load();
   };
 
   const renderTask = (task: Assegnazione, layout: { column: number; columns: number }) => {
@@ -468,8 +481,7 @@ export default function CalendarioComponent() {
       {operatorAssignments.map((a) => {
         const materialOpen = Boolean(showOperatorMaterials[a.id]);
         const allegatiOpen = Boolean(showOperatorAllegati[a.id]);
-        const selectedQuickMagazzinoId = quickMaterial[a.id]?.magazzinoId || '';
-        const quickArticoli = articoli.filter((art) => selectedQuickMagazzinoId && art.magazzino?.id === selectedQuickMagazzinoId);
+        const draft = materialDraft[a.id] ?? a.materialiNote ?? '';
         return (
         <Paper key={a.id} elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
           <Stack spacing={1.5}>
@@ -478,51 +490,21 @@ export default function CalendarioComponent() {
             <Typography><strong>Squadra:</strong> {team(a) || '-'}</Typography>
             <Typography><strong>Veicoli:</strong> {vehicleLabels(a) || '-'}</Typography>
             {a.note && <Alert severity="info">{a.note}</Alert>}
-            <Stack spacing={0.5}>
-              <Typography fontWeight={700}>Materiali</Typography>
-              {(a.materiali || []).map((m) => <Typography key={m.id} variant="body2">{m.magazzinoNome ? `${m.magazzinoNome} - ` : ''}{m.articoloNome}: {Math.abs(Number(m.quantita))}</Typography>)}
-              {(!a.materiali || a.materiali.length === 0) && <Typography variant="body2" color="text.secondary">Nessun materiale registrato.</Typography>}
-            </Stack>
             <Stack spacing={1}>
               <Button variant="outlined" onClick={() => setShowOperatorMaterials((prev) => ({ ...prev, [a.id]: !prev[a.id] }))}>
-                {materialOpen ? 'Nascondi registrazione materiale' : 'Registra materiale usato'}
+                {materialOpen ? 'Nascondi materiali' : 'Materiali e indicazioni'}
               </Button>
               {materialOpen && (
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                <Autocomplete
-                  size="small"
-                  options={magazzini}
-                  value={magazzini.find((m) => m.id === selectedQuickMagazzinoId) || null}
-                  getOptionLabel={(option) => option.nome}
-                  loading={dataLoading}
-                  disabled={dataLoading}
-                  onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] || { inventarioId: '', quantita: '' }), magazzinoId: value?.id || '', inventarioId: '' } }))}
-                  renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento magazzini...' : 'Magazzino'} />}
-                  sx={{ minWidth: { sm: 190 } }}
+              <Stack spacing={1}>
+                <TextField
+                  multiline
+                  minRows={3}
+                  label="Materiali, attrezzature o indicazioni"
+                  value={draft}
+                  onChange={(e) => setMaterialDraft((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                  fullWidth
                 />
-                <Autocomplete
-                  size="small"
-                  options={quickArticoli}
-                  value={quickArticoli.find((art) => art.id === quickMaterial[a.id]?.inventarioId) || null}
-                  getOptionLabel={(option) => option.nome}
-                  disabled={dataLoading || !selectedQuickMagazzinoId}
-                  onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] || { magazzinoId: selectedQuickMagazzinoId, quantita: '' }), inventarioId: value?.id || '' } }))}
-                  renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento prodotti...' : 'Prodotto'} />}
-                  sx={{ minWidth: { sm: 220 } }}
-                />
-                <TextField size="small" type="number" label="Quantita" value={quickMaterial[a.id]?.quantita ?? ''} onChange={(e) => setQuickMaterial((prev) => ({ ...prev, [a.id]: { ...(prev[a.id] || { magazzinoId: '', inventarioId: '' }), quantita: e.target.value === '' ? '' : Number(e.target.value) } }))} />
-                <Button variant="contained" onClick={async () => {
-                  const item = quickMaterial[a.id];
-                  if (!item?.inventarioId || !item.quantita || Number(item.quantita) <= 0) return alert('Seleziona prodotto e quantita');
-                  const res = await apiFetch(`/api/assegnazione/${a.id}/materiali`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ inventarioId: item.inventarioId, quantita: Number(item.quantita) }),
-                  });
-                  if (!res.ok) return alert((await safeReadText(res)) || 'Errore registrazione materiale');
-                  setQuickMaterial((prev) => ({ ...prev, [a.id]: { magazzinoId: '', inventarioId: '', quantita: '' } }));
-                  await load();
-                }}>Registra</Button>
+                <Button variant="contained" onClick={() => saveMaterialiNote(a.id, draft)}>Salva materiali</Button>
               </Stack>
               )}
             </Stack>
@@ -674,54 +656,19 @@ export default function CalendarioComponent() {
               <Typography><strong>Veicoli:</strong> {vehicleLabels(detail) || '-'}</Typography>
               {detail.note && <Alert severity="info">{detail.note}</Alert>}
               <Stack spacing={1}>
-                <Typography fontWeight={700}>Materiali usati</Typography>
-                {(detail.materiali || []).map((m) => (
-                  <Typography key={m.id} variant="body2">
-                    {m.magazzinoNome ? `${m.magazzinoNome} - ` : ''}{m.articoloNome}: {Math.abs(Number(m.quantita))}
-                  </Typography>
-                ))}
-                {(!detail.materiali || detail.materiali.length === 0) && <Typography variant="body2" color="text.secondary">Nessun materiale registrato.</Typography>}
-                {canManageTasks && (() => {
-                  const selectedQuickMagazzinoId = quickMaterial[detail.id]?.magazzinoId || '';
-                  const quickArticoli = articoli.filter((art) => selectedQuickMagazzinoId && art.magazzino?.id === selectedQuickMagazzinoId);
-                  return (
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                      <Autocomplete
-                        size="small"
-                        options={magazzini}
-                        value={magazzini.find((m) => m.id === selectedQuickMagazzinoId) || null}
-                        getOptionLabel={(option) => option.nome}
-                        loading={dataLoading}
-                        disabled={dataLoading}
-                        onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [detail.id]: { ...(prev[detail.id] || { inventarioId: '', quantita: '' }), magazzinoId: value?.id || '', inventarioId: '' } }))}
-                        renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento magazzini...' : 'Magazzino'} />}
-                      />
-                      <Autocomplete
-                        size="small"
-                        options={quickArticoli}
-                        value={quickArticoli.find((art) => art.id === quickMaterial[detail.id]?.inventarioId) || null}
-                        getOptionLabel={(option) => option.nome}
-                        disabled={dataLoading || !selectedQuickMagazzinoId}
-                        onChange={(_, value) => setQuickMaterial((prev) => ({ ...prev, [detail.id]: { ...(prev[detail.id] || { magazzinoId: selectedQuickMagazzinoId, quantita: '' }), inventarioId: value?.id || '' } }))}
-                        renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento prodotti...' : 'Prodotto'} />}
-                      />
-                      <TextField size="small" type="number" label="Quantita" value={quickMaterial[detail.id]?.quantita ?? ''} onChange={(e) => setQuickMaterial((prev) => ({ ...prev, [detail.id]: { ...(prev[detail.id] || { magazzinoId: '', inventarioId: '' }), quantita: e.target.value === '' ? '' : Number(e.target.value) } }))} />
-                      <Button variant="contained" onClick={async () => {
-                        const item = quickMaterial[detail.id];
-                        if (!item?.inventarioId || !item.quantita || Number(item.quantita) <= 0) return alert('Seleziona prodotto e quantita');
-                        const res = await apiFetch(`/api/assegnazione/${detail.id}/materiali`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ inventarioId: item.inventarioId, quantita: Number(item.quantita) }),
-                        });
-                        if (!res.ok) return alert((await safeReadText(res)) || 'Errore registrazione materiale');
-                        setQuickMaterial((prev) => ({ ...prev, [detail.id]: { magazzinoId: '', inventarioId: '', quantita: '' } }));
-                        await load();
-                        setDetail(null);
-                      }}>Registra</Button>
-                    </Stack>
-                  );
-                })()}
+                <Typography fontWeight={700}>Materiali e indicazioni</Typography>
+                <TextField
+                  multiline
+                  minRows={3}
+                  value={materialDraft[detail.id] ?? detail.materialiNote ?? ''}
+                  onChange={(e) => setMaterialDraft((prev) => ({ ...prev, [detail.id]: e.target.value }))}
+                  fullWidth
+                  placeholder="Es. portare scala, cavo, frutti, tubazione..."
+                />
+                <Button variant="contained" onClick={async () => {
+                  await saveMaterialiNote(detail.id, materialDraft[detail.id] ?? detail.materialiNote ?? '');
+                  setDetail((prev) => prev ? { ...prev, materialiNote: materialDraft[detail.id] ?? prev.materialiNote ?? '' } : prev);
+                }}>Salva materiali</Button>
               </Stack>
               <Divider />
               <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -803,54 +750,15 @@ export default function CalendarioComponent() {
           {step === 2 && (
             <Stack spacing={2}>
               <TextField multiline minRows={2} label="Note operative" value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} fullWidth />
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography fontWeight={700}>Materiali da portare/usare</Typography>
-                <Button variant="outlined" size="small" onClick={() => setForm((p) => ({ ...p, materialiUsati: [...p.materialiUsati, { magazzinoId: '', inventarioId: '', quantita: '', descrizione: '' }] }))}>Aggiungi</Button>
-              </Stack>
-              {form.materialiUsati.map((m, idx) => (
-                <Stack key={idx} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <Autocomplete
-                    size="small"
-                    options={magazzini}
-                    value={magazzini.find((mag) => mag.id === m.magazzinoId) || null}
-                    getOptionLabel={(option) => option.nome}
-                    loading={dataLoading}
-                    disabled={dataLoading}
-                    onChange={(_, value) => {
-                      const next = [...form.materialiUsati];
-                      next[idx] = { ...next[idx], magazzinoId: value?.id || '', inventarioId: '' };
-                      setForm((p) => ({ ...p, materialiUsati: next }));
-                    }}
-                    renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento magazzini...' : 'Magazzino'} />}
-                    sx={{ minWidth: { sm: 220 } }}
-                  />
-                  <Autocomplete
-                    size="small"
-                    options={articoli.filter((a) => m.magazzinoId && a.magazzino?.id === m.magazzinoId)}
-                    value={articoli.find((a) => a.id === m.inventarioId) || null}
-                    getOptionLabel={(option) => option.nome}
-                    disabled={dataLoading || !m.magazzinoId}
-                    onChange={(_, value) => {
-                      const next = [...form.materialiUsati];
-                      next[idx] = { ...next[idx], inventarioId: value?.id || '' };
-                      setForm((p) => ({ ...p, materialiUsati: next }));
-                    }}
-                    renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento prodotti...' : m.magazzinoId ? 'Prodotto' : 'Scegli prima un magazzino'} />}
-                    sx={{ minWidth: { sm: 240 } }}
-                  />
-                  <TextField type="number" size="small" label="Quantita" value={m.quantita ?? ''} onChange={(e) => {
-                    const next = [...form.materialiUsati];
-                    next[idx] = { ...next[idx], quantita: e.target.value === '' ? '' : Number(e.target.value) };
-                    setForm((p) => ({ ...p, materialiUsati: next }));
-                  }} />
-                  <TextField size="small" label="Nota materiale" value={m.descrizione || ''} onChange={(e) => {
-                    const next = [...form.materialiUsati];
-                    next[idx] = { ...next[idx], descrizione: e.target.value };
-                    setForm((p) => ({ ...p, materialiUsati: next }));
-                  }} sx={{ flex: 1 }} />
-                </Stack>
-              ))}
-              {form.materialiUsati.length === 0 && <Typography variant="body2" color="text.secondary">Nessun materiale inserito.</Typography>}
+              <TextField
+                multiline
+                minRows={4}
+                label="Materiali, attrezzature o indicazioni"
+                value={form.materialiNote}
+                onChange={(e) => setForm((p) => ({ ...p, materialiNote: e.target.value }))}
+                fullWidth
+                placeholder="Scrivi qui cosa serve portare o cosa e stato usato. Esempio: 20m cavo 2.5, 6 frutti, trapano, scala..."
+              />
             </Stack>
           )}
         </DialogContent>

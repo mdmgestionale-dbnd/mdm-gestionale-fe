@@ -16,7 +16,7 @@ const MSidebar = ({
 }: ItemType) => {
   const lgUp = useMediaQuery((theme: any) => theme.breakpoints.up("lg"));
 
-  const sidebarWidth = "270px";
+  const sidebarWidth = "250px";
 
   // Custom CSS for short scrollbar
   const scrollbarStyles = {
@@ -52,6 +52,8 @@ const MSidebar = ({
                 boxSizing: "border-box",
                 ...scrollbarStyles,
                 width: sidebarWidth,
+                borderRight: '1px solid',
+                borderColor: 'divider',
               },
             }
           }}
@@ -89,6 +91,7 @@ const MSidebar = ({
           sx: {
             boxShadow: (theme) => theme.shadows[8],
             ...scrollbarStyles,
+            width: 270,
           },
         }
       }}
@@ -100,7 +103,7 @@ const MSidebar = ({
         {/* ------------------------------------------- */}
         {/* Sidebar Items */}
         {/* ------------------------------------------- */}
-        <SidebarItems />
+        <SidebarItems onNavigate={() => onSidebarClose({} as any)} />
       </Box>
       {/* ------------------------------------------- */}
       {/* Sidebar For Mobile */}
@@ -110,8 +113,4 @@ const MSidebar = ({
 };
 
 export default MSidebar;
-
-
-
-
 

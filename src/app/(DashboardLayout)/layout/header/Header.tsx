@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, AppBar, Toolbar, styled, Stack, IconButton, Badge } from '@mui/material';
+import { Box, AppBar, Toolbar, styled, Stack, IconButton, Badge, Typography } from '@mui/material';
 import PropTypes from 'prop-types';
 import Link from 'next/link';
 // components
@@ -8,6 +8,7 @@ import { IconBellRinging, IconMenu } from '@tabler/icons-react';
 import { useWS } from '@/app/(DashboardLayout)/ws/WSContext';
 import { apiJson } from '@/lib/api';
 import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
+import { usePathname } from 'next/navigation';
 
 interface ItemType {
   toggleMobileSidebar:  (event: React.MouseEvent<HTMLElement>) => void;
@@ -31,9 +32,13 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
   const ToolbarStyled = styled(Toolbar)(({ theme }) => ({
     width: '100%',
     color: theme.palette.text.secondary,
+    minHeight: 58,
+    paddingLeft: theme.spacing(1.5),
+    paddingRight: theme.spacing(1.5),
   }));
 
   const { wsConnesso } = useWS();
+  const pathname = usePathname();
   const [unread, setUnread] = useState(0);
 
   const loadUnread = async () => {
@@ -51,6 +56,17 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
 
   useBroadcastRefresh(loadUnread);
 
+  const title = (() => {
+    if (pathname.includes('/cantieri')) return 'Cantieri';
+    if (pathname.includes('/ferie')) return 'Ferie';
+    if (pathname.includes('/veicoli')) return 'Veicoli';
+    if (pathname.includes('/notifiche')) return 'Notifiche';
+    if (pathname.includes('/utenze')) return 'Utenze';
+    if (pathname.includes('/utilita')) return 'Utilita';
+    if (pathname.includes('/impostazioni')) return 'Impostazioni';
+    return 'Calendario';
+  })();
+
   return (
     <AppBarStyled position="sticky" color="default">
       <ToolbarStyled>
@@ -61,12 +77,18 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
           sx={{
             display: {
               lg: "none",
-              xs: "inline",
+              xs: "none",
             },
           }}
         >
           <IconMenu width="20" height="20" />
         </IconButton>
+
+        <Box sx={{ display: { xs: 'block', lg: 'none' }, minWidth: 0 }}>
+          <Typography variant="h6" fontWeight={900} sx={{ lineHeight: 1.1 }}>{title}</Typography>
+          <Typography variant="caption" color="text.secondary">Gestionale operativo</Typography>
+        </Box>
+        <Box flexGrow={1} />
 
         <IconButton
           size="large"
@@ -81,7 +103,6 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
             <IconBellRinging size="21" />
           </Badge>
         </IconButton>
-        <Box flexGrow={1} />
 {/* Stato WebSocket */}
 {(
   <Box
@@ -94,6 +115,7 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
       fontWeight: 'bold',
       fontSize: '0.875rem',
       whiteSpace: 'nowrap',
+      display: { xs: 'none', sm: 'block' },
     }}
   >
     {wsConnesso ? 'Connesso' : 'Riconnessione'}

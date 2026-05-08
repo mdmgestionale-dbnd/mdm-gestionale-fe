@@ -70,7 +70,7 @@ export default function ReportOreComponent() {
   return (
     <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
       <Typography variant="h5" fontWeight={700} mb={1}>Report ore lavorate</Typography>
-      <Alert severity="info" sx={{ mb: 2 }}>Il file Excel contiene un foglio di riepilogo e un foglio per ogni dipendente.</Alert>
+      <Alert severity="info" sx={{ mb: 2 }}>Il file Excel contiene riepilogo, foglio per ogni dipendente e fogli veicolo. Le ore sottraggono automaticamente la pausa pranzo configurata nelle impostazioni.</Alert>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mb={2}>
         <TextField type="date" label="Da" value={from} onChange={(e) => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} size="small" />
         <TextField type="date" label="A" value={to} onChange={(e) => setTo(e.target.value)} InputLabelProps={{ shrink: true }} size="small" />

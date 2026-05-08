@@ -12,7 +12,7 @@ import { IconPoint } from '@tabler/icons-react';
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const renderMenuItems = (items: any, pathDirect: any) => {
+const renderMenuItems = (items: any, pathDirect: any, onNavigate?: () => void) => {
   return items.map((item: any) => {
     const Icon = item.icon ? item.icon : IconPoint;
 const theme = useTheme();
@@ -31,13 +31,13 @@ const itemIcon = <Icon stroke={1.5} size="1.3rem" color={theme.palette.text.prim
           icon={itemIcon}
           borderRadius="7px"
         >
-          {renderMenuItems(item.children, pathDirect)}
+          {renderMenuItems(item.children, pathDirect, onNavigate)}
         </Submenu>
       );
     }
 
     return (
-      <Box px={3} key={item.id}>
+      <Box px={2} key={item.id}>
         <MenuItem
           key={item.id}
           isSelected={pathDirect === item?.href}
@@ -45,6 +45,7 @@ const itemIcon = <Icon stroke={1.5} size="1.3rem" color={theme.palette.text.prim
           icon={itemIcon}
           link={item.href}
           component={Link}
+          onClick={onNavigate}
         >
           {item.title}
         </MenuItem>
@@ -53,7 +54,7 @@ const itemIcon = <Icon stroke={1.5} size="1.3rem" color={theme.palette.text.prim
   });
 };
 
-const SidebarItems = () => {
+const SidebarItems = ({ onNavigate }: { onNavigate?: () => void }) => {
   const pathname = usePathname();
   const pathDirect = pathname;
   const theme = useTheme();
@@ -94,7 +95,7 @@ const SidebarItems = () => {
           component={Link}
           href="/private/admin/calendario"
         />
-        {renderMenuItems(Menuitems, pathDirect)}
+        {renderMenuItems(Menuitems, pathDirect, onNavigate)}
       </MUI_Sidebar>
     </>
   );

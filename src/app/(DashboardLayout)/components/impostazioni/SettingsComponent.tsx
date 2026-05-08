@@ -41,7 +41,19 @@ interface SpaceUsage {
   storageSize: string;
 }
 
-const keyOrder = ['azienda_nome', 'azienda_indirizzo', 'azienda_piva'];
+const keyOrder = [
+  'azienda_nome',
+  'azienda_indirizzo',
+  'azienda_piva',
+  'azienda_pec',
+  'azienda_email',
+  'azienda_telefono',
+  'preventivo_firma_img',
+  'preventivo_timbro_img',
+  'preventivo_progressivo',
+  'pranzo_inizio',
+  'pranzo_fine',
+];
 
 const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [settings, setSettings] = useState<Impostazione[]>([]);
@@ -59,7 +71,11 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const fetchSettings = async () => {
     const data = await apiJson<Impostazione[]>('/api/impostazioni');
-    data.sort((a, b) => keyOrder.indexOf(a.chiave) - keyOrder.indexOf(b.chiave));
+    data.sort((a, b) => {
+      const ai = keyOrder.indexOf(a.chiave);
+      const bi = keyOrder.indexOf(b.chiave);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.chiave.localeCompare(b.chiave);
+    });
     setSettings(data);
     setEditedValues({});
   };
@@ -91,7 +107,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     if (setting.tipo === 'int' || setting.tipo === 'double') {
       let val = parseFloat(setting.valore) || 0;
       val += 1;
-      if (setting.maxValue !== undefined) val = Math.min(val, setting.maxValue);
+      if (setting.maxValue != null) val = Math.min(val, setting.maxValue);
       updateSetting(setting.chiave, setting.tipo === 'int' ? val.toFixed(0) : val.toFixed(2));
     }
   };
@@ -100,19 +116,21 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     if (setting.tipo === 'int' || setting.tipo === 'double') {
       let val = parseFloat(setting.valore) || 0;
       val -= 1;
-      if (setting.minValue !== undefined) val = Math.max(val, setting.minValue);
+      if (setting.minValue != null) val = Math.max(val, setting.minValue);
       updateSetting(setting.chiave, setting.tipo === 'int' ? val.toFixed(0) : val.toFixed(2));
     }
   };
 
-  const handleDoubleChange = (setting: Impostazione, newValue: string) => {
-    const sanitized = newValue.replace(/[^0-9.]/g, '');
-    if (!sanitized) return;
+  const normalizeNumericValue = (setting: Impostazione, newValue: string) => {
+    const sanitized = setting.tipo === 'int'
+      ? newValue.replace(/[^0-9-]/g, '')
+      : newValue.replace(/[^0-9.-]/g, '');
+    if (!sanitized || sanitized === '-') return null;
     let val = parseFloat(sanitized);
-    if (isNaN(val)) return;
-    if (setting.minValue !== undefined) val = Math.max(val, setting.minValue);
-    if (setting.maxValue !== undefined) val = Math.min(val, setting.maxValue);
-    updateSetting(setting.chiave, val.toFixed(2));
+    if (Number.isNaN(val)) return null;
+    if (setting.minValue != null) val = Math.max(val, setting.minValue);
+    if (setting.maxValue != null) val = Math.min(val, setting.maxValue);
+    return setting.tipo === 'int' ? val.toFixed(0) : val.toFixed(2);
   };
 
   const handleStringEdit = (chiave: string, valore: string) => {
@@ -124,6 +142,40 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     if (nuovoValore !== undefined && nuovoValore !== setting.valore) {
       updateSetting(setting.chiave, nuovoValore);
     }
+  };
+
+  const handleNumericSave = (setting: Impostazione) => {
+    const edited = editedValues[setting.chiave];
+    if (edited === undefined) return;
+    const normalized = normalizeNumericValue(setting, edited);
+    if (normalized !== null && normalized !== setting.valore) {
+      updateSetting(setting.chiave, normalized);
+    } else {
+      setEditedValues((prev) => {
+        const next = { ...prev };
+        delete next[setting.chiave];
+        return next;
+      });
+    }
+  };
+
+  const handleImageUpload = async (setting: Impostazione, file?: File) => {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+      alert('Formato non ammesso. Usa PNG o JPG.');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      alert('Immagine troppo grande. Usa un file sotto 1MB.');
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Errore lettura immagine'));
+      reader.readAsDataURL(file);
+    });
+    await updateSetting(setting.chiave, dataUrl);
   };
 
   const parseSizeMB = (value: string) => {
@@ -215,6 +267,26 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     }
 
     if (setting.tipo === 'string') {
+      if (setting.chiave === 'preventivo_firma_img' || setting.chiave === 'preventivo_timbro_img') {
+        return (
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+            {setting.valore ? (
+              <Box component="img" src={setting.valore} alt={setting.descrizione || setting.chiave} sx={{ maxWidth: 160, maxHeight: 70, objectFit: 'contain', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 0.5, bgcolor: 'background.paper' }} />
+            ) : (
+              <Typography variant="body2" color="text.secondary">Nessuna immagine caricata</Typography>
+            )}
+            {!readOnly && (
+              <>
+                <Button component="label" variant="outlined" size="small">
+                  Carica immagine
+                  <input hidden type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={(e) => handleImageUpload(setting, e.target.files?.[0])} />
+                </Button>
+                {setting.valore && <Button color="error" size="small" onClick={() => updateSetting(setting.chiave, '')}>Rimuovi</Button>}
+              </>
+            )}
+          </Stack>
+        );
+      }
       return (
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
           <TextField
@@ -239,13 +311,20 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
           <Remove />
         </IconButton>
         <TextField
-          value={setting.valore}
+          value={editedValues[setting.chiave] ?? setting.valore}
           size="small"
-          onChange={(e) => {
-            if (setting.tipo === 'double') handleDoubleChange(setting, e.target.value);
+          onChange={(e) => setEditedValues((prev) => ({ ...prev, [setting.chiave]: e.target.value }))}
+          onBlur={() => handleNumericSave(setting)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleNumericSave(setting);
           }}
-          inputProps={{ style: { width: 70, textAlign: 'center' }, readOnly: readOnly && setting.tipo !== 'double' }}
+          inputProps={{ style: { width: 90, textAlign: 'center' }, readOnly }}
         />
+        {editedValues[setting.chiave] !== undefined && editedValues[setting.chiave] !== setting.valore && !readOnly && (
+          <IconButton onClick={() => handleNumericSave(setting)} color="primary">
+            <Save />
+          </IconButton>
+        )}
         <IconButton onClick={() => handleIncrement(setting)} disabled={readOnly}>
           <Add />
         </IconButton>

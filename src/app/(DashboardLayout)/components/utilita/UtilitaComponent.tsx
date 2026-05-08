@@ -5,7 +5,7 @@ import { Alert, Autocomplete, Box, Button, Divider, IconButton, Paper, Stack, Te
 import { ArrowBack, Calculate, Delete, FileCopy, PictureAsPdf, ReceiptLong } from '@mui/icons-material';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import ReportOreComponent from '@/app/(DashboardLayout)/components/report/ReportOreComponent';
-import { apiJson } from '@/lib/api';
+import { apiFetch, apiJson } from '@/lib/api';
 
 type Tool = 'report' | 'merge-pdf' | 'preventivo';
 type Cliente = { id: number; nome: string; telefono?: string };
@@ -36,6 +36,21 @@ function downloadBytes(bytes: Uint8Array, filename: string, type: string) {
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+}
+
+async function embedDataUrlImage(pdf: PDFDocument, dataUrl?: string) {
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return null;
+  const [meta, base64] = dataUrl.split(',');
+  if (!base64) return null;
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  if (meta.includes('image/png')) return pdf.embedPng(bytes);
+  if (meta.includes('image/jpeg') || meta.includes('image/jpg')) return pdf.embedJpg(bytes);
+  return null;
+}
+
+function fitImage(width: number, height: number, maxWidth: number, maxHeight: number) {
+  const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+  return { width: width * scale, height: height * scale };
 }
 
 export default function UtilitaComponent() {
@@ -178,10 +193,18 @@ function PreventivoTool() {
       const aziendaNome = settings.azienda_nome || 'MDM';
       const aziendaIndirizzo = settings.azienda_indirizzo || '';
       const aziendaPiva = settings.azienda_piva || '';
+      const aziendaPec = settings.azienda_pec || '';
+      const aziendaEmail = settings.azienda_email || '';
+      const aziendaTelefono = settings.azienda_telefono || '';
+      const progressivo = settings.preventivo_progressivo || '1';
+      page.drawText(`N. ${progressivo}`, { x: width - 190, y: y - 26, size: 12, font: bold, color: rgb(0.08, 0.18, 0.31) });
       page.drawText(aziendaNome, { x: 42, y: y - 46, size: 10, font: bold, color: rgb(0.08, 0.18, 0.31) });
       if (aziendaIndirizzo) page.drawText(aziendaIndirizzo, { x: 42, y: y - 60, size: 8, font });
       if (aziendaPiva) page.drawText(`P.IVA ${aziendaPiva}`, { x: 42, y: y - 72, size: 8, font });
-      y -= 92;
+      if (aziendaPec) page.drawText(`PEC ${aziendaPec}`, { x: 42, y: y - 84, size: 8, font });
+      if (aziendaEmail) page.drawText(`Email ${aziendaEmail}`, { x: 42, y: y - 96, size: 8, font });
+      if (aziendaTelefono) page.drawText(`Tel. ${aziendaTelefono}`, { x: 42, y: y - 108, size: 8, font });
+      y -= 124;
       page.drawText(`Data: ${new Date().toLocaleDateString('it-IT')}`, { x: 42, y, size: 10, font });
       y -= 22;
       page.drawText(`Cliente: ${cliente.nome}`, { x: 42, y, size: 12, font: bold });
@@ -219,9 +242,31 @@ function PreventivoTool() {
       page.drawText(`IVA ${Number(iva) || 0}%: ${currency(ivaValue)}`, { x: 330, y, size: 11, font });
       y -= 22;
       page.drawText(`Totale: ${currency(totale)}`, { x: 330, y, size: 14, font: bold, color: rgb(0.08, 0.18, 0.31) });
+      y -= 64;
+      page.drawText('Timbro', { x: 330, y, size: 10, font: bold });
+      page.drawText('Firma', { x: 450, y, size: 10, font: bold });
+      page.drawRectangle({ x: 330, y: y - 70, width: 95, height: 58, borderColor: rgb(0.55, 0.6, 0.66), borderWidth: 1 });
+      page.drawRectangle({ x: 450, y: y - 70, width: 95, height: 58, borderColor: rgb(0.55, 0.6, 0.66), borderWidth: 1 });
+      const timbro = await embedDataUrlImage(pdf, settings.preventivo_timbro_img);
+      const firma = await embedDataUrlImage(pdf, settings.preventivo_firma_img);
+      if (timbro) {
+        const size = fitImage(timbro.width, timbro.height, 87, 50);
+        page.drawImage(timbro, { x: 334 + (87 - size.width) / 2, y: y - 66 + (50 - size.height) / 2, ...size });
+      }
+      if (firma) {
+        const size = fitImage(firma.width, firma.height, 87, 50);
+        page.drawImage(firma, { x: 454 + (87 - size.width) / 2, y: y - 66 + (50 - size.height) / 2, ...size });
+      }
 
       const bytes = await pdf.save();
       downloadBytes(bytes, `preventivo-${cliente.nome.replace(/\s+/g, '-').toLowerCase()}-${todayIso()}.pdf`, 'application/pdf');
+      const nextProgressivo = String((Number(progressivo) || 1) + 1);
+      await apiFetch('/api/impostazioni/preventivo_progressivo', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/plain' },
+        body: nextProgressivo,
+      });
+      setSettings((prev) => ({ ...prev, preventivo_progressivo: nextProgressivo }));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Errore generazione preventivo');
     } finally {
@@ -235,7 +280,7 @@ function PreventivoTool() {
         <Typography variant="h5" fontWeight={800}>Crea preventivo</Typography>
         {(settings.azienda_nome || settings.azienda_indirizzo || settings.azienda_piva) && (
           <Alert severity="info">
-            Intestazione: {[settings.azienda_nome, settings.azienda_indirizzo, settings.azienda_piva ? `P.IVA ${settings.azienda_piva}` : ''].filter(Boolean).join(' - ')}
+            Intestazione: {[settings.azienda_nome, settings.azienda_indirizzo, settings.azienda_piva ? `P.IVA ${settings.azienda_piva}` : '', settings.azienda_pec ? `PEC ${settings.azienda_pec}` : '', settings.azienda_email, settings.azienda_telefono ? `Tel. ${settings.azienda_telefono}` : '', settings.preventivo_progressivo ? `Preventivo n. ${settings.preventivo_progressivo}` : ''].filter(Boolean).join(' - ')}
           </Alert>
         )}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>

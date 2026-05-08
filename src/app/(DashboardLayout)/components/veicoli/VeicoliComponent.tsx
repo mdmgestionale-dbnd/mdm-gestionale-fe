@@ -10,6 +10,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControlLabel,
   Paper,
   Radio,
@@ -31,9 +32,12 @@ type Veicolo = {
   scadenzaAssicurazione?: string | null;
   scadenzaRevisione?: string | null;
   scadenzaBollo?: string | null;
+  scadenzeExtra?: string | null;
   isDeleted?: boolean;
   deleted?: boolean;
 };
+
+type ScadenzaExtra = { id: string; nome: string; data: string };
 
 const emptyForm: Veicolo = {
   targa: '',
@@ -73,6 +77,29 @@ function isDeleted(item: Veicolo) {
   return Boolean(item.isDeleted || item.deleted);
 }
 
+function parseExtra(value?: string | null): ScadenzaExtra[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((x) => x?.id)
+          .map((x) => ({ id: String(x.id), nome: String(x.nome || ''), data: String(x.data || '') }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function stringifyExtra(items: ScadenzaExtra[]) {
+  const clean = items.filter((x) => x.nome.trim() && x.data);
+  return clean.length ? JSON.stringify(clean) : null;
+}
+
+function serializeExtraDraft(items: ScadenzaExtra[]) {
+  return JSON.stringify(items);
+}
+
 export default function VeicoliComponent() {
   const [veicoli, setVeicoli] = useState<Veicolo[]>([]);
   const [deletedVeicoli, setDeletedVeicoli] = useState<Veicolo[]>([]);
@@ -82,9 +109,10 @@ export default function VeicoliComponent() {
   const [editing, setEditing] = useState<Veicolo | null>(null);
   const [renewing, setRenewing] = useState<Veicolo | null>(null);
   const [form, setForm] = useState<Veicolo>(emptyForm);
-  const [renewType, setRenewType] = useState<'assicurazione' | 'revisione' | 'bollo'>('assicurazione');
+  const [renewType, setRenewType] = useState<string>('assicurazione');
   const [renewDate, setRenewDate] = useState(new Date().toISOString().slice(0, 10));
-  const [renewDuration, setRenewDuration] = useState<'6' | '12'>('12');
+  const [renewDuration, setRenewDuration] = useState('12');
+  const [renewNextDate, setRenewNextDate] = useState('');
   const [loading, setLoading] = useState(false);
   const { user } = useCurrentUser();
   const canWrite = (user?.role || '').toUpperCase() !== 'DIPENDENTE';
@@ -110,7 +138,12 @@ export default function VeicoliComponent() {
     return veicoli.filter((v) => !q || [v.targa, v.marca, v.modello].some((x) => (x || '').toLowerCase().includes(q)));
   }, [veicoli, query]);
 
-  const urgentCount = veicoli.filter((v) => ['error', 'warning'].includes(deadlineColor(v.scadenzaAssicurazione)) || ['error', 'warning'].includes(deadlineColor(v.scadenzaRevisione)) || ['error', 'warning'].includes(deadlineColor(v.scadenzaBollo))).length;
+  const urgentCount = veicoli.filter((v) =>
+    ['error', 'warning'].includes(deadlineColor(v.scadenzaAssicurazione))
+    || ['error', 'warning'].includes(deadlineColor(v.scadenzaRevisione))
+    || ['error', 'warning'].includes(deadlineColor(v.scadenzaBollo))
+    || parseExtra(v.scadenzeExtra).some((extra) => ['error', 'warning'].includes(deadlineColor(extra.data)))
+  ).length;
 
   const openNew = () => {
     setEditing(null);
@@ -122,6 +155,23 @@ export default function VeicoliComponent() {
     setEditing(item);
     setForm({ ...item });
     setOpen(true);
+  };
+
+  const updateExtra = (index: number, patch: Partial<ScadenzaExtra>) => {
+    const items = parseExtra(form.scadenzeExtra);
+    items[index] = { ...items[index], ...patch };
+    setForm((p) => ({ ...p, scadenzeExtra: serializeExtraDraft(items) }));
+  };
+
+  const addExtra = () => {
+    const items = parseExtra(form.scadenzeExtra);
+    items.push({ id: String(Date.now()), nome: '', data: '' });
+    setForm((p) => ({ ...p, scadenzeExtra: serializeExtraDraft(items) }));
+  };
+
+  const removeExtra = (index: number) => {
+    const items = parseExtra(form.scadenzeExtra).filter((_, i) => i !== index);
+    setForm((p) => ({ ...p, scadenzeExtra: items.length ? serializeExtraDraft(items) : null }));
   };
 
   const closeDialog = () => {
@@ -137,7 +187,7 @@ export default function VeicoliComponent() {
       const res = await apiFetch(editing?.id ? `/api/veicolo/${editing.id}` : '/api/veicolo', {
         method: editing?.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, targa: form.targa.trim().toUpperCase() }),
+        body: JSON.stringify({ ...form, targa: form.targa.trim().toUpperCase(), scadenzeExtra: stringifyExtra(parseExtra(form.scadenzeExtra)) }),
       });
       if (!res.ok) throw new Error((await safeReadText(res)) || 'Errore salvataggio veicolo');
       closeDialog();
@@ -165,13 +215,20 @@ export default function VeicoliComponent() {
 
   const saveRenewal = async () => {
     if (!renewing?.id) return;
-    const base = new Date(renewDate);
-    base.setMonth(base.getMonth() + Number(renewDuration));
-    const nextDate = base.toISOString().slice(0, 10);
+    const nextDate = renewNextDate || (() => {
+      const base = new Date(renewDate);
+      base.setMonth(base.getMonth() + Number(renewDuration || 0));
+      return base.toISOString().slice(0, 10);
+    })();
     const payload = { ...renewing };
     if (renewType === 'assicurazione') payload.scadenzaAssicurazione = nextDate;
     if (renewType === 'revisione') payload.scadenzaRevisione = nextDate;
     if (renewType === 'bollo') payload.scadenzaBollo = nextDate;
+    if (renewType.startsWith('extra:')) {
+      const extraId = renewType.substring('extra:'.length);
+      const extra = parseExtra(payload.scadenzeExtra).map((item) => item.id === extraId ? { ...item, data: nextDate } : item);
+      payload.scadenzeExtra = stringifyExtra(extra);
+    }
     const res = await apiFetch(`/api/veicolo/${renewing.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -210,12 +267,21 @@ export default function VeicoliComponent() {
                   <Chip size="small" label={deadlineLabel('Assicurazione', v.scadenzaAssicurazione)} color={deadlineColor(v.scadenzaAssicurazione)} />
                   <Chip size="small" label={deadlineLabel('Revisione', v.scadenzaRevisione)} color={deadlineColor(v.scadenzaRevisione)} />
                   <Chip size="small" label={deadlineLabel('Bollo', v.scadenzaBollo)} color={deadlineColor(v.scadenzaBollo)} />
+                  {parseExtra(v.scadenzeExtra).map((extra) => (
+                    <Chip key={extra.id} size="small" label={deadlineLabel(extra.nome, extra.data)} color={deadlineColor(extra.data)} />
+                  ))}
                 </Stack>
               </Box>
               {canWrite && (
                 <Stack direction="row" spacing={1} alignSelf={{ xs: 'stretch', md: 'center' }}>
                   <Button size="small" startIcon={<Edit />} onClick={() => openEdit(v)}>Modifica</Button>
-                  <Button size="small" onClick={() => { setRenewing(v); setRenewDate(new Date().toISOString().slice(0, 10)); }}>Rinnova</Button>
+                  <Button size="small" onClick={() => {
+                    setRenewing(v);
+                    setRenewType('assicurazione');
+                    setRenewDate(new Date().toISOString().slice(0, 10));
+                    setRenewDuration('12');
+                    setRenewNextDate('');
+                  }}>Rinnova</Button>
                   <Button size="small" color="error" startIcon={<Delete />} onClick={() => remove(v)}>Elimina</Button>
                 </Stack>
               )}
@@ -254,6 +320,19 @@ export default function VeicoliComponent() {
           <TextField type="date" label="Scadenza assicurazione" value={form.scadenzaAssicurazione || ''} onChange={(e) => setForm((p) => ({ ...p, scadenzaAssicurazione: e.target.value || null }))} InputLabelProps={{ shrink: true }} fullWidth />
           <TextField type="date" label="Scadenza revisione" value={form.scadenzaRevisione || ''} onChange={(e) => setForm((p) => ({ ...p, scadenzaRevisione: e.target.value || null }))} InputLabelProps={{ shrink: true }} fullWidth />
           <TextField type="date" label="Scadenza bollo" value={form.scadenzaBollo || ''} onChange={(e) => setForm((p) => ({ ...p, scadenzaBollo: e.target.value || null }))} InputLabelProps={{ shrink: true }} fullWidth />
+          <Divider />
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography fontWeight={700}>Scadenze personalizzate</Typography>
+            <Button size="small" onClick={addExtra}>Aggiungi</Button>
+          </Stack>
+          {parseExtra(form.scadenzeExtra).map((extra, index) => (
+            <Stack key={extra.id} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <TextField label="Nome scadenza" value={extra.nome} onChange={(e) => updateExtra(index, { nome: e.target.value })} fullWidth />
+              <TextField type="date" label="Data" value={extra.data} onChange={(e) => updateExtra(index, { data: e.target.value })} InputLabelProps={{ shrink: true }} fullWidth />
+              <Button color="error" onClick={() => removeExtra(index)}>Rimuovi</Button>
+            </Stack>
+          ))}
+          {parseExtra(form.scadenzeExtra).length === 0 && <Typography variant="body2" color="text.secondary">Nessuna scadenza aggiuntiva. Puoi usarle per cestelli, revisioni speciali o controlli periodici non standard.</Typography>}
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialog}>Annulla</Button>
@@ -268,12 +347,13 @@ export default function VeicoliComponent() {
             <FormControlLabel value="assicurazione" control={<Radio />} label="Assicurazione" />
             <FormControlLabel value="revisione" control={<Radio />} label="Revisione" />
             <FormControlLabel value="bollo" control={<Radio />} label="Bollo" />
+            {parseExtra(renewing?.scadenzeExtra).map((extra) => (
+              <FormControlLabel key={extra.id} value={`extra:${extra.id}`} control={<Radio />} label={extra.nome} />
+            ))}
           </RadioGroup>
           <TextField type="date" label="Data rinnovo" value={renewDate} onChange={(e) => setRenewDate(e.target.value)} InputLabelProps={{ shrink: true }} />
-          <RadioGroup row value={renewDuration} onChange={(e) => setRenewDuration(e.target.value as '6' | '12')}>
-            <FormControlLabel value="6" control={<Radio />} label="Semestrale" />
-            <FormControlLabel value="12" control={<Radio />} label="Annuale" />
-          </RadioGroup>
+          <TextField type="number" label="Durata in mesi dalla data rinnovo" value={renewDuration} onChange={(e) => setRenewDuration(e.target.value)} helperText="Esempi: 6, 12, 24, 120. Puoi anche impostare direttamente la nuova scadenza sotto." />
+          <TextField type="date" label="Nuova scadenza manuale" value={renewNextDate} onChange={(e) => setRenewNextDate(e.target.value)} InputLabelProps={{ shrink: true }} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRenewing(null)}>Annulla</Button>
