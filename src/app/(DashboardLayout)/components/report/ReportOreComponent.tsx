@@ -9,12 +9,17 @@ type ReportRow = {
   utenteId: number;
   nomeCompleto: string;
   oreLavorate: number;
+  oreStraordinario: number;
   giorniAssenzaApprovata: number;
 };
 type ReportResponse = { from: string; to: string; righe: ReportRow[] };
 
 function label(u: Utente) {
   return `${u.nome || ''} ${u.cognome || ''}`.trim() || u.username;
+}
+
+function roundHours(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 export default function ReportOreComponent() {
@@ -36,10 +41,10 @@ export default function ReportOreComponent() {
   const load = async () => {
     setLoading(true);
     try {
-    const params = new URLSearchParams({ from, to });
-    if (utenteId) params.set('utenteId', String(utenteId));
-    const data = await apiJson<ReportResponse>(`/api/report/ore-lavorate?${params}`);
-    setRows(data.righe || []);
+      const params = new URLSearchParams({ from, to });
+      if (utenteId) params.set('utenteId', String(utenteId));
+      const data = await apiJson<ReportResponse>(`/api/report/ore-lavorate?${params}`);
+      setRows(data.righe || []);
     } finally {
       setLoading(false);
     }
@@ -55,7 +60,7 @@ export default function ReportOreComponent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `report-ore-${from}_${to}.xlsx`;
+      a.download = `report-ore-${from.split('-').reverse().join('-')}_${to.split('-').reverse().join('-')}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -70,7 +75,7 @@ export default function ReportOreComponent() {
   return (
     <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
       <Typography variant="h5" fontWeight={700} mb={1}>Report ore lavorate</Typography>
-      <Alert severity="info" sx={{ mb: 2 }}>Il file Excel contiene riepilogo, foglio per ogni dipendente e fogli veicolo. Le ore sottraggono automaticamente la pausa pranzo configurata nelle impostazioni.</Alert>
+      <Alert severity="info" sx={{ mb: 2 }}>Il file Excel contiene riepilogo, foglio per ogni dipendente e fogli veicolo. Le ore sottraggono la pausa pranzo e separano automaticamente gli straordinari.</Alert>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} mb={2}>
         <TextField type="date" label="Da" value={from} onChange={(e) => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} size="small" />
         <TextField type="date" label="A" value={to} onChange={(e) => setTo(e.target.value)} InputLabelProps={{ shrink: true }} size="small" />
@@ -83,10 +88,10 @@ export default function ReportOreComponent() {
       </Stack>
       <TableContainer>
         <Table size="small">
-          <TableHead><TableRow><TableCell>Dipendente</TableCell><TableCell>Ore</TableCell><TableCell>Giorni assenza approvata</TableCell></TableRow></TableHead>
+          <TableHead><TableRow><TableCell>Dipendente</TableCell><TableCell>Ore ordinarie</TableCell><TableCell>Ore straordinario</TableCell><TableCell>Totale</TableCell><TableCell>Giorni assenza approvata</TableCell></TableRow></TableHead>
           <TableBody>
-            {rows.map((r) => <TableRow key={r.utenteId}><TableCell>{r.nomeCompleto}</TableCell><TableCell>{r.oreLavorate}</TableCell><TableCell>{r.giorniAssenzaApprovata}</TableCell></TableRow>)}
-            {rows.length === 0 && <TableRow><TableCell colSpan={3}>Genera il report per visualizzare i dati.</TableCell></TableRow>}
+            {rows.map((r) => <TableRow key={r.utenteId}><TableCell>{r.nomeCompleto}</TableCell><TableCell>{r.oreLavorate}</TableCell><TableCell>{r.oreStraordinario}</TableCell><TableCell>{roundHours(Number(r.oreLavorate || 0) + Number(r.oreStraordinario || 0))}</TableCell><TableCell>{r.giorniAssenzaApprovata}</TableCell></TableRow>)}
+            {rows.length === 0 && <TableRow><TableCell colSpan={5}>Genera il report per visualizzare i dati.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </TableContainer>

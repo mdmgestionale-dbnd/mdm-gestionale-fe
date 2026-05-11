@@ -33,6 +33,15 @@ function statusColor(stato: string): 'success' | 'error' | 'warning' | 'default'
   return 'default';
 }
 
+function formatDate(value: string): string {
+  if (!value) return '-';
+  return new Date(`${value}T00:00:00`).toLocaleDateString('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 export default function FerieComponent() {
   const { user } = useCurrentUser();
   const role = (user?.role || '').toUpperCase();
@@ -110,7 +119,7 @@ export default function FerieComponent() {
           <Chip size="small" label={p.stato.replace('_', ' ')} color={statusColor(p.stato)} />
         </Stack>
         {admin && <Typography variant="body2" color="text.secondary">{p.tipo}</Typography>}
-        <Typography>{p.startDate} - {p.endDate}</Typography>
+        <Typography>{formatDate(p.startDate)} - {formatDate(p.endDate)}</Typography>
         {p.note && <Typography variant="body2" color="text.secondary">{p.note}</Typography>}
         {admin && p.stato === 'IN_ATTESA' && (
           <Stack spacing={1}>
@@ -130,7 +139,7 @@ export default function FerieComponent() {
       <Paper elevation={0} sx={{ p: { xs: 2, md: 3 }, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={2}>
           <div>
-            <Typography variant="h5" fontWeight={700}>Ferie, malattie e permessi</Typography>
+            <Typography variant="h5" fontWeight={700}>Ferie e malattie</Typography>
             <Typography variant="body2" color="text.secondary">Richieste personali e approvazioni amministrative.</Typography>
           </div>
           <Button variant="contained" startIcon={<Add />} onClick={() => setOpenRequest(true)}>Nuova richiesta</Button>

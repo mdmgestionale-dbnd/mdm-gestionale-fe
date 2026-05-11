@@ -53,6 +53,7 @@ const keyOrder = [
   'preventivo_progressivo',
   'pranzo_inizio',
   'pranzo_fine',
+  'straordinario_inizio',
 ];
 
 const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {

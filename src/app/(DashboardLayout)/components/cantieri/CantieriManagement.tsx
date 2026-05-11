@@ -20,10 +20,10 @@ import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import CantiereAllegati from '@/app/(DashboardLayout)/components/allegati/CantiereAllegati';
 
-type Cliente = { id?: number; nome: string; telefono?: string; isDeleted?: boolean; deleted?: boolean };
+type Cliente = { id?: number; nome: string; riferimento?: string; telefono?: string; isDeleted?: boolean; deleted?: boolean };
 type Cantiere = { id: number; nome: string; cliente?: { id: number; nome: string }; isDeleted?: boolean; deleted?: boolean };
 
-const emptyCliente: Cliente = { nome: '', telefono: '' };
+const emptyCliente: Cliente = { nome: '', riferimento: '', telefono: '' };
 const emptyCantiere = { nome: '' };
 
 function isDeleted(item: { isDeleted?: boolean; deleted?: boolean }) {
@@ -69,7 +69,7 @@ export default function CantieriManagement() {
 
   const filteredClienti = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return clienti.filter((c) => !q || `${c.nome} ${c.telefono || ''}`.toLowerCase().includes(q));
+    return clienti.filter((c) => !q || `${c.nome} ${c.riferimento || ''} ${c.telefono || ''}`.toLowerCase().includes(q));
   }, [clienti, query]);
 
   const cantieriForCliente = useMemo(() => (
@@ -81,7 +81,7 @@ export default function CantieriManagement() {
     const res = await apiFetch(editingCliente?.id ? `/api/cliente/${editingCliente.id}` : '/api/cliente', {
       method: editingCliente?.id ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome: clienteForm.nome, telefono: clienteForm.telefono }),
+      body: JSON.stringify({ nome: clienteForm.nome, riferimento: clienteForm.riferimento, telefono: clienteForm.telefono }),
     });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore salvataggio cliente');
     setClienteOpen(false);
@@ -143,7 +143,7 @@ export default function CantieriManagement() {
           </Box>
           {canWrite && <Button variant="contained" startIcon={<Add />} onClick={() => { setEditingCliente(null); setClienteForm(emptyCliente); setClienteOpen(true); }}>Nuovo cliente</Button>}
         </Stack>
-        <TextField size="small" fullWidth label="Cerca cliente o telefono" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ mt: 2 }} />
+        <TextField size="small" fullWidth label="Cerca cliente, referente o telefono" value={query} onChange={(e) => setQuery(e.target.value)} sx={{ mt: 2 }} />
       </Paper>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
@@ -153,6 +153,7 @@ export default function CantieriManagement() {
               <Stack direction="row" justifyContent="space-between" spacing={1}>
                 <Box>
                   <Typography fontWeight={800}>{c.nome}</Typography>
+                  {c.riferimento && <Typography variant="body2" color="text.secondary">Referente: {c.riferimento}</Typography>}
                   <Typography variant="body2" color="text.secondary">{c.telefono || 'Telefono non inserito'}</Typography>
                 </Box>
                 {canWrite && (
@@ -211,6 +212,7 @@ export default function CantieriManagement() {
         <DialogTitle>{editingCliente ? 'Modifica cliente' : 'Nuovo cliente'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
           <TextField label="Nome cliente" value={clienteForm.nome || ''} onChange={(e) => setClienteForm((p) => ({ ...p, nome: e.target.value }))} fullWidth />
+          <TextField label="Referente" value={clienteForm.riferimento || ''} onChange={(e) => setClienteForm((p) => ({ ...p, riferimento: e.target.value }))} fullWidth />
           <TextField label="Telefono" value={clienteForm.telefono || ''} onChange={(e) => setClienteForm((p) => ({ ...p, telefono: e.target.value }))} fullWidth />
         </DialogContent>
         <DialogActions><Button onClick={() => setClienteOpen(false)}>Annulla</Button><Button variant="contained" onClick={saveCliente}>Salva</Button></DialogActions>

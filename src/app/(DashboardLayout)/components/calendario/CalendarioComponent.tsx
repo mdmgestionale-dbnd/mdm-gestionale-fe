@@ -30,7 +30,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useBroadcastRefresh } from '@/hooks/useBroadcastRefresh';
 import CantiereAllegati from '@/app/(DashboardLayout)/components/allegati/CantiereAllegati';
 
-type Cliente = { id: number; nome: string };
+type Cliente = { id: number; nome: string; riferimento?: string; telefono?: string };
 type Cantiere = { id: number; nome: string; codice?: string; cliente?: Cliente };
 type Utente = { id: number; username: string; nome?: string; cognome?: string };
 type Veicolo = { id: number; targa: string; marca?: string; modello?: string };
@@ -124,6 +124,16 @@ function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function formatDay(value: Date): string {
   return value.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
@@ -134,6 +144,15 @@ function sameDay(a: Date, b: Date): boolean {
 
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function minutesFromTime(value: string): number {
+  const [h, m] = value.split(':').map((part) => Number(part));
+  return (Number.isFinite(h) ? h : 17) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+function dateMinutes(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes();
 }
 
 function layoutOverlaps(tasks: Assegnazione[]) {
@@ -186,6 +205,7 @@ export default function CalendarioComponent() {
   const [showOperatorMaterials, setShowOperatorMaterials] = useState<Record<number, boolean>>({});
   const [showOperatorAllegati, setShowOperatorAllegati] = useState<Record<number, boolean>>({});
   const [adminView, setAdminView] = useState<'grid' | 'summary'>('grid');
+  const [overtimeStart, setOvertimeStart] = useState('17:00');
   const isMobilePortrait = useMediaQuery('(max-width:700px) and (orientation: portrait)');
 
   const rangeDays = isMobilePortrait ? 3 : 7;
@@ -197,7 +217,14 @@ export default function CalendarioComponent() {
     setWeekStart(isMobilePortrait ? startOfDay(new Date()) : startOfWeek(new Date()));
   }, [isMobilePortrait]);
 
+  useEffect(() => {
+    apiJson<{ valore: string }>('/api/impostazioni/straordinario_inizio')
+      .then((data) => setOvertimeStart(data.valore || '17:00'))
+      .catch(() => setOvertimeStart('17:00'));
+  }, []);
+
   const load = useCallback(async () => {
+    if (!role) return;
     const summaryRange = role !== 'ADMIN' || adminView === 'summary';
     const rangeStart = summaryRange ? startOfDay(new Date()) : weekStart;
     const rangeEnd = summaryRange ? addDays(rangeStart, 15) : weekEnd;
@@ -217,7 +244,7 @@ export default function CalendarioComponent() {
           apiJson<Utente[]>('/api/utenti/dipendenti'),
           apiJson<Assegnazione[]>('/api/assegnazione/deleted'),
         ]);
-        setClienti(cl);
+        setClienti(cl.filter((cliente) => Boolean(cliente.nome?.trim())));
         setCantieri(ca);
         setVeicoli(v);
         setOverview(ov);
@@ -293,15 +320,23 @@ export default function CalendarioComponent() {
   const operatorAssignments = useMemo(() => {
     const nowDate = new Date();
     const now = nowDate.getTime();
+    const afterOvertimeStart = dateMinutes(nowDate) >= minutesFromTime(overtimeStart);
     const candidates = visibleAssegnazioni
       .filter((a) => new Date(a.endAt).getTime() >= now)
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
     const todayKey = dateKey(nowDate);
     const today = candidates.filter((a) => dateKey(new Date(a.startAt)) === todayKey);
+    if (afterOvertimeStart) {
+      const currentToday = today.filter((a) => new Date(a.startAt).getTime() <= now);
+      if (currentToday.length) return currentToday;
+      const next = candidates.filter((a) => dateKey(new Date(a.startAt)) !== todayKey);
+      const nextKeyAfterCutoff = next.length ? dateKey(new Date(next[0].startAt)) : '';
+      return next.filter((a) => dateKey(new Date(a.startAt)) === nextKeyAfterCutoff);
+    }
     if (today.length) return today;
     const nextKey = candidates.length ? dateKey(new Date(candidates[0].startAt)) : '';
     return candidates.filter((a) => dateKey(new Date(a.startAt)) === nextKey);
-  }, [visibleAssegnazioni]);
+  }, [overtimeStart, visibleAssegnazioni]);
 
   const openNewAt = (start: Date) => {
     setEditing(null);
@@ -347,6 +382,11 @@ export default function CalendarioComponent() {
     if (!form.cantiereId || !form.startAt || !form.endAt) return alert('Cantiere e orari sono obbligatori');
     const selectedUnavailable = form.membroIds.some((id) => membriOccupati.has(id)) || form.veicoloIds.some((id) => veicoliOccupati.has(id));
     if (selectedUnavailable) return alert('Hai selezionato almeno una persona o un veicolo non disponibile.');
+    const start = new Date(form.startAt);
+    const startsAsOvertime = dateMinutes(start) >= minutesFromTime(overtimeStart);
+    if (!editing && startsAsOvertime && !confirm(`Questo task inizia dopo le ${overtimeStart}: verra conteggiato come straordinario nel report ore.\n\nConfermi la creazione?`)) {
+      return;
+    }
 
     setLoading(true);
     try {
@@ -486,7 +526,7 @@ export default function CalendarioComponent() {
         <Paper key={a.id} elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
           <Stack spacing={1.5}>
             <Typography variant="h6" fontWeight={800}>{a.cantiereNome}</Typography>
-            <Typography color="text.secondary">{new Date(a.startAt).toLocaleString('it-IT')} - {new Date(a.endAt).toLocaleString('it-IT')}</Typography>
+            <Typography color="text.secondary">{formatDateTime(a.startAt)} - {formatDateTime(a.endAt)}</Typography>
             <Typography><strong>Squadra:</strong> {team(a) || '-'}</Typography>
             <Typography><strong>Veicoli:</strong> {vehicleLabels(a) || '-'}</Typography>
             {a.note && <Alert severity="info">{a.note}</Alert>}
@@ -633,7 +673,7 @@ export default function CalendarioComponent() {
                   <Box>
                     <Typography fontWeight={700}>{a.cantiereNome}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Inizio: {new Date(a.startAt).toLocaleString('it-IT')} | Fine: {new Date(a.endAt).toLocaleString('it-IT')}
+                      Inizio: {formatDateTime(a.startAt)} | Fine: {formatDateTime(a.endAt)}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">Squadra: {team(a) || '-'}</Typography>
                   </Box>
@@ -711,10 +751,11 @@ export default function CalendarioComponent() {
               <Autocomplete
                 options={clienti}
                 value={clienti.find((c) => c.id === form.clienteId) || null}
-                getOptionLabel={(option) => option.nome}
+                getOptionLabel={(option) => option.riferimento ? `${option.nome} - ${option.riferimento}` : option.nome}
                 loading={dataLoading}
                 disabled={dataLoading}
                 onChange={(_, value) => setForm((p) => ({ ...p, clienteId: value?.id || '', cantiereId: '' }))}
+                noOptionsText={dataLoading ? 'Caricamento clienti...' : 'Nessun cliente trovato'}
                 renderInput={(params) => <TextField {...params} label={dataLoading ? 'Caricamento clienti...' : 'Cliente'} />}
               />
               <Autocomplete
