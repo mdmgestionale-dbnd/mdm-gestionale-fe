@@ -39,6 +39,8 @@ type Assegnazione = {
   id: number;
   cantiereId: number;
   cantiereNome: string;
+  clienteId?: number;
+  clienteNome?: string;
   startAt: string;
   endAt: string;
   note?: string;
@@ -313,6 +315,7 @@ export default function CalendarioComponent() {
 
   const team = (a: Assegnazione) => a.membroNomi?.length ? a.membroNomi.join(', ') : (a.membroIds || []).map((id) => utenteMap.get(id) || id).join(', ');
   const vehicleLabels = (a: Assegnazione) => a.veicoloNomi?.length ? a.veicoloNomi.join(', ') : (a.veicoloIds || []).map((id) => veicoloMap.get(id) || id).join(', ');
+  const taskTitle = (a: Assegnazione) => [a.clienteNome, a.cantiereNome].filter(Boolean).join(' - ') || a.cantiereNome;
   const visibleAssegnazioni = useMemo(() => {
     if (canInspectOperators && selectedUtenteId) return assegnazioni.filter((a) => a.membroIds.includes(Number(selectedUtenteId)));
     return assegnazioni;
@@ -414,7 +417,7 @@ export default function CalendarioComponent() {
   };
 
   const remove = async (a: Assegnazione) => {
-    if (!confirm(`Eliminare il task ${a.cantiereNome}?\n\nIl task verra spostato negli elementi eliminati e potrai ripristinarlo finche non esegui la pulizia definitiva.`)) return;
+    if (!confirm(`Eliminare il task ${taskTitle(a)}?\n\nIl task verra spostato negli elementi eliminati e potrai ripristinarlo finche non esegui la pulizia definitiva.`)) return;
     const res = await apiFetch(`/api/assegnazione/${a.id}`, { method: 'DELETE' });
     if (!res.ok) return alert((await safeReadText(res)) || 'Errore eliminazione task');
     setDetail(null);
@@ -483,7 +486,7 @@ export default function CalendarioComponent() {
                 fontWeight={700}
                 sx={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.15 }}
               >
-                {formatTime(task.startAt)} {task.cantiereNome}
+                {formatTime(task.startAt)} {taskTitle(task)}
               </Typography>
               <Typography
                 variant="caption"
@@ -525,7 +528,7 @@ export default function CalendarioComponent() {
         return (
         <Paper key={a.id} elevation={0} sx={{ p: { xs: 2, md: 3 }, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
           <Stack spacing={1.5}>
-            <Typography variant="h6" fontWeight={800}>{a.cantiereNome}</Typography>
+            <Typography variant="h6" fontWeight={800}>{taskTitle(a)}</Typography>
             <Typography color="text.secondary">{formatDateTime(a.startAt)} - {formatDateTime(a.endAt)}</Typography>
             <Typography><strong>Squadra:</strong> {team(a) || '-'}</Typography>
             <Typography><strong>Veicoli:</strong> {vehicleLabels(a) || '-'}</Typography>
@@ -671,7 +674,7 @@ export default function CalendarioComponent() {
               {deletedAssegnazioni.map((a) => (
                 <Stack key={a.id} direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ p: 1.2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
                   <Box>
-                    <Typography fontWeight={700}>{a.cantiereNome}</Typography>
+                    <Typography fontWeight={700}>{taskTitle(a)}</Typography>
                     <Typography variant="body2" color="text.secondary">
                       Inizio: {formatDateTime(a.startAt)} | Fine: {formatDateTime(a.endAt)}
                     </Typography>
@@ -687,7 +690,7 @@ export default function CalendarioComponent() {
       )}
 
       <Dialog open={Boolean(detail)} onClose={() => setDetail(null)} fullWidth maxWidth="sm" fullScreen={typeof window !== 'undefined' && window.innerWidth < 700}>
-        <DialogTitle>{detail?.cantiereNome}</DialogTitle>
+        <DialogTitle>{detail ? taskTitle(detail) : ''}</DialogTitle>
         <DialogContent>
           {detail && (
             <Stack spacing={2}>

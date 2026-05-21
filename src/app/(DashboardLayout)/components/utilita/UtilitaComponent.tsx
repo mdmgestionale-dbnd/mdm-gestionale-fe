@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Autocomplete, Box, Button, Divider, IconButton, Paper, Stack, TextField, Typography } from '@mui/material';
 import { ArrowBack, Calculate, Delete, FileCopy, PictureAsPdf, ReceiptLong } from '@mui/icons-material';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
+import { AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import ReportOreComponent from '@/app/(DashboardLayout)/components/report/ReportOreComponent';
 import { apiFetch, apiJson } from '@/lib/api';
 
@@ -15,7 +16,7 @@ type Impostazione = { chiave: string; valore: string };
 const tools: Array<{ id: Tool; title: string; description: string; icon: React.ReactNode }> = [
   { id: 'report', title: 'Report ore', description: 'Excel mensile con ore lavorate, ferie e malattia.', icon: <Calculate /> },
   { id: 'merge-pdf', title: 'Unisci PDF', description: 'Combina piu documenti PDF in un unico file ordinato.', icon: <PictureAsPdf /> },
-  { id: 'preventivo', title: 'Crea preventivo', description: 'Genera un preventivo PDF con logo, cliente, IVA e totale.', icon: <ReceiptLong /> },
+  { id: 'preventivo', title: 'Crea preventivo', description: 'Genera un preventivo Word modificabile con logo, cliente, IVA e totale.', icon: <ReceiptLong /> },
 ];
 
 function todayIso() {
@@ -38,19 +39,42 @@ function downloadBytes(bytes: Uint8Array, filename: string, type: string) {
   window.URL.revokeObjectURL(url);
 }
 
-async function embedDataUrlImage(pdf: PDFDocument, dataUrl?: string) {
+const EMPTY_BORDERS = {
+  top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+  insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+};
+
+function paragraph(text: string, bold = false, size = 24, alignment?: typeof AlignmentType[keyof typeof AlignmentType]) {
+  return new Paragraph({
+    alignment,
+    children: [new TextRun({ text, bold, size, font: 'Times New Roman' })],
+    spacing: { after: 80 },
+  });
+}
+
+function tableTextCell(text: string, bold = false, alignment?: typeof AlignmentType[keyof typeof AlignmentType], width?: number) {
+  const lines = text.split('\n').filter((line) => line.trim() || text.length === 0);
+  return new TableCell({
+    width: width ? { size: width, type: WidthType.DXA } : undefined,
+    margins: { top: 90, bottom: 90, left: 120, right: 120 },
+    verticalAlign: VerticalAlign.CENTER,
+    children: lines.length
+      ? lines.map((line) => new Paragraph({ alignment, children: [new TextRun({ text: line, bold, size: 24, font: 'Times New Roman' })] }))
+      : [new Paragraph('')],
+  });
+}
+
+async function dataUrlToImageRun(dataUrl: string | undefined, width: number, height: number) {
   if (!dataUrl || !dataUrl.startsWith('data:image/')) return null;
   const [meta, base64] = dataUrl.split(',');
   if (!base64) return null;
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  if (meta.includes('image/png')) return pdf.embedPng(bytes);
-  if (meta.includes('image/jpeg') || meta.includes('image/jpg')) return pdf.embedJpg(bytes);
-  return null;
-}
-
-function fitImage(width: number, height: number, maxWidth: number, maxHeight: number) {
-  const scale = Math.min(maxWidth / width, maxHeight / height, 1);
-  return { width: width * scale, height: height * scale };
+  const type: 'png' | 'gif' | 'bmp' | 'jpg' = meta.includes('image/png') ? 'png' : meta.includes('image/gif') ? 'gif' : meta.includes('image/bmp') ? 'bmp' : 'jpg';
+  const data = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  return new ImageRun({ data, type, transformation: { width, height } });
 }
 
 export default function UtilitaComponent() {
@@ -168,98 +192,161 @@ function PreventivoTool() {
     setRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   };
 
+  const resetForm = () => {
+    setCliente(null);
+    setOggetto('Preventivo lavori elettrici');
+    setIva('22');
+    setRows([{ descrizione: '', quantita: '1', prezzo: '' }]);
+  };
+
   const generate = async () => {
     if (!cliente) return alert('Seleziona un cliente.');
     const cleanRows = rows.filter((row) => row.descrizione.trim() && Number(row.quantita) > 0 && Number(row.prezzo) >= 0);
     if (cleanRows.length === 0) return alert('Inserisci almeno una voce valida.');
     setLoading(true);
     try {
-      const pdf = await PDFDocument.create();
-      const page = pdf.addPage([595.28, 841.89]);
-      const font = await pdf.embedFont(StandardFonts.Helvetica);
-      const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-      const { width, height } = page.getSize();
-      let y = height - 54;
-
-      try {
-        const logoBytes = await fetch('/images/logos/logo_transparent.png').then((r) => r.arrayBuffer());
-        const logo = await pdf.embedPng(logoBytes);
-        page.drawImage(logo, { x: 42, y: y - 28, width: 92, height: 42 });
-      } catch {
-        page.drawText('MDM', { x: 42, y, size: 18, font: bold, color: rgb(0.09, 0.2, 0.35) });
-      }
-
-      page.drawText('Preventivo', { x: width - 190, y, size: 24, font: bold, color: rgb(0.08, 0.18, 0.31) });
-      const aziendaNome = settings.azienda_nome || 'MDM';
-      const aziendaIndirizzo = settings.azienda_indirizzo || '';
-      const aziendaPiva = settings.azienda_piva || '';
-      const aziendaPec = settings.azienda_pec || '';
-      const aziendaEmail = settings.azienda_email || '';
-      const aziendaTelefono = settings.azienda_telefono || '';
       const progressivo = settings.preventivo_progressivo || '1';
-      page.drawText(`N. ${progressivo}`, { x: width - 190, y: y - 26, size: 12, font: bold, color: rgb(0.08, 0.18, 0.31) });
-      page.drawText(aziendaNome, { x: 42, y: y - 46, size: 10, font: bold, color: rgb(0.08, 0.18, 0.31) });
-      if (aziendaIndirizzo) page.drawText(aziendaIndirizzo, { x: 42, y: y - 60, size: 8, font });
-      if (aziendaPiva) page.drawText(`P.IVA ${aziendaPiva}`, { x: 42, y: y - 72, size: 8, font });
-      if (aziendaPec) page.drawText(`PEC ${aziendaPec}`, { x: 42, y: y - 84, size: 8, font });
-      if (aziendaEmail) page.drawText(`Email ${aziendaEmail}`, { x: 42, y: y - 96, size: 8, font });
-      if (aziendaTelefono) page.drawText(`Tel. ${aziendaTelefono}`, { x: 42, y: y - 108, size: 8, font });
-      y -= 124;
-      page.drawText(`Data: ${new Date().toLocaleDateString('it-IT')}`, { x: 42, y, size: 10, font });
-      y -= 22;
-      page.drawText(`Cliente: ${cliente.nome}`, { x: 42, y, size: 12, font: bold });
-      if (cliente.telefono) page.drawText(`Telefono: ${cliente.telefono}`, { x: 42, y: y - 16, size: 10, font });
-      y -= 48;
-      page.drawText(oggetto || 'Preventivo lavori elettrici', { x: 42, y, size: 14, font: bold });
-      y -= 34;
+      const preventivoNumero = String(progressivo).padStart(3, '0');
+      const aziendaNome = settings.azienda_nome || 'MDM';
+      const aziendaLines = [
+        aziendaNome,
+        settings.azienda_indirizzo || '',
+        settings.azienda_piva ? `P.I.V.A.: ${settings.azienda_piva}` : '',
+        settings.azienda_telefono ? `TEL: ${settings.azienda_telefono}` : '',
+        settings.azienda_email ? `e-mail: ${settings.azienda_email}` : '',
+        settings.azienda_pec ? `pec: ${settings.azienda_pec}` : '',
+      ].filter(Boolean);
+      const logoBytes = await fetch('/images/logos/logo_transparent.png')
+        .then((r) => r.ok ? r.arrayBuffer() : null)
+        .catch(() => null);
+      const logoRun = logoBytes ? new ImageRun({ data: logoBytes, type: 'png', transformation: { width: 233, height: 85 } }) : null;
+      const timbroFirmaRun = await dataUrlToImageRun(settings.preventivo_timbro_img || settings.preventivo_firma_img, 190, 95);
 
-      const columns = [42, 330, 405, 485];
-      page.drawText('Descrizione', { x: columns[0], y, size: 10, font: bold });
-      page.drawText('Q.ta', { x: columns[1], y, size: 10, font: bold });
-      page.drawText('Prezzo', { x: columns[2], y, size: 10, font: bold });
-      page.drawText('Totale', { x: columns[3], y, size: 10, font: bold });
-      y -= 12;
-      page.drawLine({ start: { x: 42, y }, end: { x: width - 42, y }, thickness: 1, color: rgb(0.8, 0.83, 0.87) });
-      y -= 20;
-
-      cleanRows.forEach((row) => {
-        const qty = Number(row.quantita) || 0;
-        const price = Number(row.prezzo) || 0;
-        const lineTotal = qty * price;
-        const description = row.descrizione.length > 52 ? `${row.descrizione.slice(0, 49)}...` : row.descrizione;
-        page.drawText(description, { x: columns[0], y, size: 10, font });
-        page.drawText(String(qty), { x: columns[1], y, size: 10, font });
-        page.drawText(currency(price), { x: columns[2], y, size: 10, font });
-        page.drawText(currency(lineTotal), { x: columns[3], y, size: 10, font });
-        y -= 22;
+      const headerTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: EMPTY_BORDERS,
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 25, type: WidthType.PERCENTAGE },
+                borders: EMPTY_BORDERS,
+                children: [logoRun ? new Paragraph({ children: [logoRun] }) : paragraph(aziendaNome, true, 24)],
+              }),
+              new TableCell({
+                width: { size: 75, type: WidthType.PERCENTAGE },
+                borders: EMPTY_BORDERS,
+                children: aziendaLines.map((line, index) => paragraph(line, index === 0, index === 0 ? 24 : 19, AlignmentType.RIGHT)),
+              }),
+            ],
+          }),
+        ],
       });
 
-      y -= 18;
-      page.drawLine({ start: { x: 330, y }, end: { x: width - 42, y }, thickness: 1, color: rgb(0.8, 0.83, 0.87) });
-      y -= 22;
-      page.drawText(`Imponibile: ${currency(imponibile)}`, { x: 330, y, size: 11, font });
-      y -= 18;
-      page.drawText(`IVA ${Number(iva) || 0}%: ${currency(ivaValue)}`, { x: 330, y, size: 11, font });
-      y -= 22;
-      page.drawText(`Totale: ${currency(totale)}`, { x: 330, y, size: 14, font: bold, color: rgb(0.08, 0.18, 0.31) });
-      y -= 64;
-      page.drawText('Timbro', { x: 330, y, size: 10, font: bold });
-      page.drawText('Firma', { x: 450, y, size: 10, font: bold });
-      page.drawRectangle({ x: 330, y: y - 70, width: 95, height: 58, borderColor: rgb(0.55, 0.6, 0.66), borderWidth: 1 });
-      page.drawRectangle({ x: 450, y: y - 70, width: 95, height: 58, borderColor: rgb(0.55, 0.6, 0.66), borderWidth: 1 });
-      const timbro = await embedDataUrlImage(pdf, settings.preventivo_timbro_img);
-      const firma = await embedDataUrlImage(pdf, settings.preventivo_firma_img);
-      if (timbro) {
-        const size = fitImage(timbro.width, timbro.height, 87, 50);
-        page.drawImage(timbro, { x: 334 + (87 - size.width) / 2, y: y - 66 + (50 - size.height) / 2, ...size });
-      }
-      if (firma) {
-        const size = fitImage(firma.width, firma.height, 87, 50);
-        page.drawImage(firma, { x: 454 + (87 - size.width) / 2, y: y - 66 + (50 - size.height) / 2, ...size });
-      }
+      const rowsTable = cleanRows.map((row) => {
+        const qty = Number(row.quantita) || 0;
+        const price = Number(row.prezzo) || 0;
+        return new TableRow({
+          children: [
+            tableTextCell(row.descrizione, false, AlignmentType.LEFT, 7900),
+            tableTextCell(currency(qty * price), false, AlignmentType.RIGHT, 2120),
+          ],
+        });
+      });
 
-      const bytes = await pdf.save();
-      downloadBytes(bytes, `preventivo-${cliente.nome.replace(/\s+/g, '-').toLowerCase()}-${todayIso()}.pdf`, 'application/pdf');
+      const quoteTable = new Table({
+        width: { size: 10031, type: WidthType.DXA },
+        rows: [
+          new TableRow({
+            children: [
+              tableTextCell('DESCRIZIONE', true, AlignmentType.LEFT, 7900),
+              tableTextCell('IMPORTO', true, AlignmentType.CENTER, 2120),
+            ],
+          }),
+          ...rowsTable,
+          new TableRow({
+            children: [
+              tableTextCell('IMPONIBILE', true, AlignmentType.LEFT, 7900),
+              tableTextCell(currency(imponibile), true, AlignmentType.RIGHT, 2120),
+            ],
+          }),
+          new TableRow({
+            children: [
+              tableTextCell(`IVA ${Number(iva) || 0}%`, false, AlignmentType.LEFT, 7900),
+              tableTextCell(currency(ivaValue), false, AlignmentType.RIGHT, 2120),
+            ],
+          }),
+          new TableRow({
+            children: [
+              tableTextCell('TOTALE SPESA', true, AlignmentType.LEFT, 7900),
+              tableTextCell(currency(totale), true, AlignmentType.RIGHT, 2120),
+            ],
+          }),
+        ],
+      });
+
+      const doc = new Document({
+        styles: {
+          default: {
+            document: { run: { font: 'Times New Roman', size: 24 } },
+            heading1: { run: { font: 'Times New Roman', size: 28, bold: true } },
+          },
+        },
+        sections: [{
+          properties: {
+            page: {
+              margin: { top: 720, right: 720, bottom: 720, left: 720 },
+            },
+          },
+          children: [
+            headerTable,
+            paragraph('', false, 10),
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Preventivo nr.: ', bold: true, size: 24, font: 'Times New Roman' }),
+                new TextRun({ text: preventivoNumero, bold: true, size: 24, font: 'Times New Roman' }),
+                new TextRun({ text: '                                                            ', size: 24, font: 'Times New Roman' }),
+                new TextRun({ text: 'Data: ', bold: true, size: 24, font: 'Times New Roman' }),
+                new TextRun({ text: new Date().toLocaleDateString('it-IT'), bold: true, size: 24, font: 'Times New Roman' }),
+              ],
+              spacing: { after: 260 },
+            }),
+            new Paragraph({
+              indent: { left: 5000 },
+              children: [new TextRun({ text: 'Spett.le', bold: true, size: 24, font: 'Times New Roman' })],
+              spacing: { after: 0 },
+            }),
+            new Paragraph({
+              indent: { left: 5000 },
+              children: [new TextRun({ text: cliente.nome, size: 24, font: 'Times New Roman' })],
+              spacing: { after: 0 },
+            }),
+            ...(cliente.telefono ? [new Paragraph({
+              indent: { left: 5000 },
+              children: [new TextRun({ text: cliente.telefono, size: 24, font: 'Times New Roman' })],
+              spacing: { after: 240 },
+            })] : [paragraph('', false, 10)]),
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Oggetto: ', bold: true, size: 24, font: 'Times New Roman' }),
+                new TextRun({ text: oggetto || 'Preventivo lavori elettrici', size: 24, font: 'Times New Roman' }),
+              ],
+              spacing: { after: 260 },
+            }),
+            quoteTable,
+            paragraph('', false, 10),
+            paragraph('Tutti i prezzi sono da intendersi inclusi di aliquota I.V.A.', false, 24),
+            paragraph('', false, 10),
+            timbroFirmaRun
+              ? new Paragraph({ alignment: AlignmentType.RIGHT, children: [timbroFirmaRun], spacing: { before: 160 } })
+              : new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: 'Timbro e firma', bold: true, size: 24, font: 'Times New Roman' })] }),
+          ],
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      downloadBytes(bytes, `preventivo-${cliente.nome.replace(/\s+/g, '-').toLowerCase()}-${todayIso()}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       const nextProgressivo = String((Number(progressivo) || 1) + 1);
       await apiFetch('/api/impostazioni/preventivo_progressivo', {
         method: 'PUT',
@@ -267,6 +354,9 @@ function PreventivoTool() {
         body: nextProgressivo,
       });
       setSettings((prev) => ({ ...prev, preventivo_progressivo: nextProgressivo }));
+      if (confirm('Preventivo DOCX generato. Vuoi pulire la pagina e iniziare un nuovo preventivo?')) {
+        resetForm();
+      }
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Errore generazione preventivo');
     } finally {
@@ -293,7 +383,7 @@ function PreventivoTool() {
         <Stack spacing={1.2}>
           {rows.map((row, index) => (
             <Stack key={index} direction={{ xs: 'column', md: 'row' }} spacing={1}>
-              <TextField label="Voce" value={row.descrizione} onChange={(e) => updateRow(index, { descrizione: e.target.value })} sx={{ flex: 1 }} />
+              <TextField multiline minRows={2} label="Voce" value={row.descrizione} onChange={(e) => updateRow(index, { descrizione: e.target.value })} sx={{ flex: 1 }} />
               <TextField label="Q.ta" type="number" value={row.quantita} onChange={(e) => updateRow(index, { quantita: e.target.value })} sx={{ width: { xs: '100%', md: 110 } }} />
               <TextField label="Prezzo" type="number" value={row.prezzo} onChange={(e) => updateRow(index, { prezzo: e.target.value })} sx={{ width: { xs: '100%', md: 150 } }} />
               <IconButton color="error" onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))} disabled={rows.length === 1}><Delete /></IconButton>
@@ -308,7 +398,7 @@ function PreventivoTool() {
             <Typography variant="h6">Totale: <strong>{currency(totale)}</strong></Typography>
           </Stack>
         </Paper>
-        <Button variant="contained" onClick={generate} disabled={loading}>{loading ? 'Genero...' : 'Genera PDF preventivo'}</Button>
+        <Button variant="contained" onClick={generate} disabled={loading}>{loading ? 'Genero...' : 'Genera DOCX preventivo'}</Button>
       </Stack>
     </Paper>
   );

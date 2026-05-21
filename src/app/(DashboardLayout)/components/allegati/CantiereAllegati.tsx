@@ -22,7 +22,8 @@ type Props = {
   title?: string;
 };
 
-const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/heic', 'image/heif'];
+const ACCEPTED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic', '.heif'];
 const MAX_UPLOAD_MB = 12;
 const MAX_STORAGE_MB = 2;
 
@@ -59,8 +60,10 @@ export default function CantiereAllegati({ cantiereId, canUpload = false, canDel
 
   const upload = async (file?: File) => {
     if (!file) return;
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      alert('Formato non ammesso. Puoi caricare solo PDF, JPG, JPEG o PNG.');
+    const lowerName = file.name.toLowerCase();
+    const hasAllowedExtension = ACCEPTED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+    if (!ACCEPTED_TYPES.includes(file.type) && !hasAllowedExtension) {
+      alert('Formato non ammesso. Puoi caricare PDF o immagini comuni: JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC.');
       return;
     }
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
@@ -106,11 +109,11 @@ export default function CantiereAllegati({ cantiereId, canUpload = false, canDel
         {canUpload && (
           <Button component="label" size="small" startIcon={<UploadFile />} disabled={uploading}>
             {uploading ? 'Carico...' : 'Carica file'}
-            <input hidden type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(e) => upload(e.target.files?.[0])} />
+            <input hidden type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,application/pdf,image/*" onChange={(e) => upload(e.target.files?.[0])} />
           </Button>
         )}
       </Stack>
-      <Typography variant="caption" color="text.secondary">Formati ammessi: PDF, JPG, JPEG, PNG. Upload massimo {MAX_UPLOAD_MB}MB; salvataggio massimo {MAX_STORAGE_MB}MB.</Typography>
+      <Typography variant="caption" color="text.secondary">Formati ammessi: PDF e immagini comuni. Upload massimo {MAX_UPLOAD_MB}MB; salvataggio massimo {MAX_STORAGE_MB}MB.</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
         <TextField size="small" label="Cerca file" value={query} onChange={(e) => setQuery(e.target.value)} fullWidth />
         <TextField size="small" type="date" label="Da" value={from} onChange={(e) => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />

@@ -60,6 +60,7 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
     if (pathname.includes('/cantieri')) return 'Cantieri';
     if (pathname.includes('/ferie')) return 'Ferie';
     if (pathname.includes('/veicoli')) return 'Veicoli';
+    if (pathname.includes('/carte')) return 'Carte';
     if (pathname.includes('/notifiche')) return 'Notifiche';
     if (pathname.includes('/utenze')) return 'Utenze';
     if (pathname.includes('/utilita')) return 'Utilita';

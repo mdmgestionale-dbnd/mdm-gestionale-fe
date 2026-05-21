@@ -48,7 +48,6 @@ const keyOrder = [
   'azienda_pec',
   'azienda_email',
   'azienda_telefono',
-  'preventivo_firma_img',
   'preventivo_timbro_img',
   'preventivo_progressivo',
   'pranzo_inizio',
@@ -77,7 +76,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
       const bi = keyOrder.indexOf(b.chiave);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.chiave.localeCompare(b.chiave);
     });
-    setSettings(data);
+    setSettings(data.filter((setting) => setting.chiave !== 'preventivo_firma_img'));
     setEditedValues({});
   };
 
@@ -268,7 +267,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
     }
 
     if (setting.tipo === 'string') {
-      if (setting.chiave === 'preventivo_firma_img' || setting.chiave === 'preventivo_timbro_img') {
+      if (setting.chiave === 'preventivo_timbro_img') {
         return (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
             {setting.valore ? (
@@ -279,7 +278,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
             {!readOnly && (
               <>
                 <Button component="label" variant="outlined" size="small">
-                  Carica immagine
+                  Carica timbro e firma
                   <input hidden type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={(e) => handleImageUpload(setting, e.target.files?.[0])} />
                 </Button>
                 {setting.valore && <Button color="error" size="small" onClick={() => updateSetting(setting.chiave, '')}>Rimuovi</Button>}

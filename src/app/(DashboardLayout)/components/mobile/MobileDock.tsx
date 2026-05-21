@@ -22,6 +22,7 @@ import {
   IconBriefcase2,
   IconCalendarTime,
   IconCar,
+  IconCreditCard,
   IconDots,
   IconLayoutDashboard,
   IconSettings,
@@ -45,6 +46,7 @@ const mainItems: DockItem[] = [
 
 const moreItems: DockItem[] = [
   { title: 'Veicoli', href: '/private/admin/veicoli', icon: <IconCar size={22} /> },
+  { title: 'Carte', href: '/private/admin/carte', icon: <IconCreditCard size={22} /> },
   { title: 'Utenze', href: '/private/admin/utenze', icon: <IconUser size={22} /> },
   { title: 'Utilita', href: '/private/admin/utilita', icon: <IconTools size={22} /> },
   { title: 'Impostazioni', href: '/private/admin/impostazioni', icon: <IconSettings size={22} /> },

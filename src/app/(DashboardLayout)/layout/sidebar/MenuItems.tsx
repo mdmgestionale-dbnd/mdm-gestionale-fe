@@ -7,6 +7,7 @@ import {
   IconCar,
   IconCalendarTime,
   IconTools,
+  IconCreditCard,
 } from "@tabler/icons-react";
 
 
@@ -46,6 +47,12 @@ const Menuitems = [
     title: "Gestione Veicoli",
     icon: IconCar,
     href: "/private/admin/veicoli",
+  },
+  {
+    id: uniqueId(),
+    title: "Carte",
+    icon: IconCreditCard,
+    href: "/private/admin/carte",
   },
   {
     id: uniqueId(),
