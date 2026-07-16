@@ -3,10 +3,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Autocomplete, Box, Button, Divider, IconButton, Paper, Stack, TextField, Typography } from '@mui/material';
 import { ArrowBack, Calculate, Delete, FileCopy, PictureAsPdf, ReceiptLong } from '@mui/icons-material';
-import { PDFDocument } from 'pdf-lib';
 import { AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType } from 'docx';
 import ReportOreComponent from '@/app/(DashboardLayout)/components/report/ReportOreComponent';
-import { apiFetch, apiJson } from '@/lib/api';
+import { apiFetch, apiJson, safeReadText } from '@/lib/api';
 
 type Tool = 'report' | 'merge-pdf' | 'preventivo';
 type Cliente = { id: number; nome: string; telefono?: string };
@@ -127,16 +126,12 @@ function MergePdfTool() {
     if (files.length < 2) return alert('Seleziona almeno due PDF da unire.');
     setLoading(true);
     try {
-      const output = await PDFDocument.create();
-      for (const file of files) {
-        const source = await PDFDocument.load(
-          await file.arrayBuffer(),
-          { ignoreEncryption: true }
-        );
-        const pages = await output.copyPages(source, source.getPageIndices());
-        pages.forEach((page) => output.addPage(page));
-      }
-      const bytes = await output.save();
+      const body = new FormData();
+      files.forEach((file) => body.append('files', file, file.name));
+      const res = await apiFetch('/api/utilita/pdf/merge', { method: 'POST', body });
+      if (!res.ok) throw new Error((await safeReadText(res)) || 'Errore durante unione PDF');
+      const blob = await res.blob();
+      const bytes = new Uint8Array(await blob.arrayBuffer());
       downloadBytes(bytes, `pdf-unito-${todayIso()}.pdf`, 'application/pdf');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Errore durante unione PDF');
