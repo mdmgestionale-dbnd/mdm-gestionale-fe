@@ -129,7 +129,10 @@ function MergePdfTool() {
     try {
       const output = await PDFDocument.create();
       for (const file of files) {
-        const source = await PDFDocument.load(await file.arrayBuffer());
+        const source = await PDFDocument.load(
+          await file.arrayBuffer(),
+          { ignoreEncryption: true }
+        );
         const pages = await output.copyPages(source, source.getPageIndices());
         pages.forEach((page) => output.addPage(page));
       }
